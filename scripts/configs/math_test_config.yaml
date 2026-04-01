@@ -1,0 +1,56 @@
+# Math 测试配置文件
+# 用于 mini-swe-agent 测试 Math 数据集
+
+# 模型配置
+model:
+  # === 本地模型配置 (LMStudio) ===
+  model: "lm_studio/qwen/qwen3.5-9b"  #
+  api_base: "http://0.0.0.0:1234/v1"  
+  api_key: "lmstudio"  # 占位符，litellm 调用时通常需要非空字符串
+  max_tokens: 12800
+  temperature: 0.0
+  think: false  # 关闭 thinking 模式（qwen3 等思考模型默认 content 为空，导致 agent 无法解析命令）
+  
+
+  # === 其他模型选项（取消注释使用） ===
+  
+  # OpenAI GPT-4 (需要 OPENAI_API_KEY 环境变量)
+  # model_name: "gpt-4"
+  # temperature: 0.0
+  # max_tokens: 4096
+  
+  # OpenAI GPT-4o-mini (便宜且效果好)
+  # model_name: "gpt-4o-mini"
+  # temperature: 0.0
+  # max_tokens: 4096
+  
+  # Anthropic Claude (需要 ANTHROPIC_API_KEY 环境变量)
+  # model_name: "claude-3-5-sonnet-20241022"
+  # temperature: 0.0
+  # max_tokens: 4096
+  
+  # Ollama 本地模型 (需要先运行 ollama serve)
+  # model_name: "ollama/qwen2.5:7b"
+  # temperature: 0.0
+  # max_tokens: 4096
+  # api_base: "http://localhost:11434"
+
+# Agent 配置
+agent:
+  step_limit: 10      # 最大步数限制
+  cost_limit: 100    # 成本限制 (美元)
+
+# 数据集配置
+dataset:
+  base_path: "datasets/math/data"
+  sources:
+    - aime24
+    - aime25
+    - amc23
+
+# 运行配置
+run:
+  max-instances: 50    # 默认测试问题数量
+  workers: 1          # 并行数
+  output_dir: "outputs/math_test"
+  save_trajectories: true

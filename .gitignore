@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+.conda/
+
+# 实验输出（轨迹、结果、工作目录）
+outputs/
+
+# 数据集（通常较大，单独管理）
+datasets/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# 日志
+*.log
+
+# 环境变量
+.env
+.env.*
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# 测试缓存
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
