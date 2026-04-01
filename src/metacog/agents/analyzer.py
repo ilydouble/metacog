@@ -134,21 +134,25 @@ class AnalyzerAgent(BaseAgent):
 
         steps = self._parse_steps(data.get("traj_path"))
         if not steps:
+            print("  [Analyzer] 无法读取轨迹文件，跳过分析", flush=True)
             return
 
         # 分块摘要
         chunks = [steps[i: i + self.chunk_size]
                   for i in range(0, len(steps), self.chunk_size)]
+        print(f"  [Analyzer] 失败轨迹 {len(steps)} 步 → {len(chunks)} 块摘要...", flush=True)
         summaries: list[str] = []
-        for chunk in chunks:
+        for j, chunk in enumerate(chunks, 1):
             s = self._summarize_chunk(chunk)
             if s:
                 summaries.append(s)
+            print(f"  [Analyzer] 块 {j}/{len(chunks)} 完成", flush=True)
 
         if not summaries:
             return
 
         # 蒸馏成最终记忆条目
+        print(f"  [Analyzer] 蒸馏 {len(summaries)} 条摘要 → 记忆条目...", flush=True)
         try:
             analysis = self._distill(
                 summaries=summaries,
@@ -265,15 +269,18 @@ class AnalyzerAgent(BaseAgent):
 
         chunks = [steps[i: i + self.chunk_size]
                   for i in range(0, len(steps), self.chunk_size)]
+        print(f"  [Analyzer] 成功轨迹 {len(steps)} 步 → {len(chunks)} 块提取技术...", flush=True)
         summaries: list[str] = []
-        for chunk in chunks:
+        for j, chunk in enumerate(chunks, 1):
             s = self._summarize_chunk_success(chunk)
             if s:
                 summaries.append(s)
+            print(f"  [Analyzer] 块 {j}/{len(chunks)} 完成", flush=True)
 
         if not summaries:
             return
 
+        print(f"  [Analyzer] 蒸馏成功技术...", flush=True)
         try:
             analysis = self._distill_success(
                 summaries=summaries,

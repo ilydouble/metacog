@@ -83,20 +83,28 @@ For AIME problems, the answer is an integer from 0 to 999.
 # ------------------------------------------------------------------ #
 
 def load_dataset(data_source: str, base_path: str, max_instances: int) -> list[dict]:
-    import glob, random
-    path = Path(base_path) / data_source
-    files = sorted(glob.glob(str(path / "*.json")))
-    if not files:
-        raise FileNotFoundError(f"No JSON files found in {path}")
+    data_file = Path(base_path) / f"{data_source}.json"
+    if not data_file.exists():
+        raise FileNotFoundError(f"数据文件不存在: {data_file}")
     problems = []
-    for f in files:
-        data = json.loads(Path(f).read_text())
+    with open(data_file) as f:
+        for i, line in enumerate(f):
+            if max_instances and i >= max_instances:
+                break
+            try:
+                problems.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+    # 如果按行解析为空，尝试整体解析（JSON 数组格式）
+    if not problems:
+        content = data_file.read_text()
+        data = json.loads(content)
         if isinstance(data, list):
-            problems.extend(data)
+            problems = data
         elif isinstance(data, dict):
-            problems.append(data)
-    if max_instances and len(problems) > max_instances:
-        problems = problems[:max_instances]
+            problems = [data]
+        if max_instances:
+            problems = problems[:max_instances]
     return problems
 
 
@@ -179,40 +187,74 @@ def main(
     traj_dir.mkdir(parents=True, exist_ok=True)
 
     # 事件总线 + 四个 Agent
+    # 注意：bus 按注册顺序同步调用，日志 handler 在 Agent handler 之前注册，
+    # 确保打印先于实际处理，让用户能看到当前在哪个阶段。
     bus = EventBus()
     executor = ExecutorAgent(litellm_model, bus, scaffold_data, mem_store, registry, traj_dir,
                              skills_dir=skills_dir)
+
+    # ── 日志：Solver 完成，Analyzer 即将开始（注册在 AnalyzerAgent 之前）
+    @bus.on(EventType.TRAJECTORY)
+    def log_trajectory(event: Event) -> None:
+        d = event.data
+        outcome = "[green]✓ 解出[/green]" if d.get("passed") else "[red]✗ 失败[/red]"
+        console.print(
+            f"  {outcome} | 步数={d.get('n_steps', 0)} | "
+            f"耗时={d.get('time', 0):.1f}s | 答案={d.get('extracted_answer') or '—'}"
+        )
+        label = "成功" if d.get("passed") else "失败"
+        console.print(f"  [dim]→ [Analyzer] 正在分析{label}轨迹...[/dim]")
+
     _analyzer = AnalyzerAgent(litellm_model, bus)
+
+    # ── 日志：Analyzer 完成分析，MemoryManager 即将写入（注册在 MemoryManagerAgent 之前）
+    @bus.on(EventType.ANALYSIS)
+    def log_analysis(event: Event) -> None:
+        a = event.data.get("analysis", {})
+        title = a.get("lesson_title", "?")
+        ftype = a.get("failure_type", "?")
+        console.print(f"  [dim]→ [MemoryManager] 写入记忆: [{ftype}] {title}[/dim]")
+
     _mem_manager = MemoryManagerAgent(litellm_model, bus, mem_store)
+
+    # ── 日志：成功技术提取完成，SkillAgent 即将处理（注册在 SkillAgent 之前）
+    @bus.on(EventType.SUCCESS_ANALYSIS)
+    def log_success(event: Event) -> None:
+        technique = event.data.get("technique", "?")
+        tags = event.data.get("tags", [])
+        console.print(f"  [dim]→ [SkillAgent] 成功模式: {technique} {tags}[/dim]")
+
     _skill_agent = SkillAgent(litellm_model, bus, registry, skills_dir, threshold=3)
 
-    # 日志：记忆更新事件
+    # ── 日志：记忆实际写入完成
     @bus.on(EventType.MEMORY_UPDATED)
     def log_memory(event: Event) -> None:
-        console.print(f"  [magenta]↑ 记忆{event.data['action']}: {event.data['entry_id']} "
-                      f"(题 {event.data['problem_id']})[/magenta]")
+        action = event.data.get("action", "?")
+        eid = event.data.get("entry_id", "?")
+        pid = event.data.get("problem_id", "?")
+        console.print(f"  [magenta]  ↑ 记忆 {action}: {eid} (题 {pid})[/magenta]")
 
-    # 日志：skill 生成事件
+    # ── 日志：Skill 文件生成
     @bus.on(EventType.SKILL_CREATED)
     def log_skill(event: Event) -> None:
-        console.print(f"  [bold green]★ 新 Skill 生成: {event.data['name']} "
+        console.print(f"  [bold green]  ★ 新 Skill 生成: {event.data['name']} "
                       f"tags={event.data['tags']}[/bold green]")
 
     # 加载数据集
     console.print(f"\n[bold]加载数据集: {data_source}[/bold]")
     problems = load_dataset(data_source, base_path, max_instances)
-    console.print(f"共 {len(problems)} 道题\n")
+    console.print(f"共 {len(problems)} 道题 | 记忆: {len(mem_store)} 条 | Skills: {len(registry)}\n")
 
     # 逐题运行
     results = []
     for i, prob in enumerate(problems, 1):
         pid = str(prob.get("id", f"prob_{i}"))
-        console.print(f"[bold][{i}/{len(problems)}] {pid}[/bold]")
+        console.rule(f"[bold cyan][{i}/{len(problems)}] {pid}[/bold cyan]")
+        console.print(f"  [dim]→ [Solver] 解题中... (记忆 {len(mem_store)} 条 | limit={scaffold_data.get('step_limit',10)} 步)[/dim]")
         record = executor.run_problem(prob)
         results.append(record)
-        status = "[green]✓[/green]" if record["passed"] else "[red]✗[/red]"
-        console.print(f"  {status} got={record['extracted_answer']} "
-                      f"exp={record['expected_answer']} steps={record['n_steps']}")
+        # ← log_trajectory handler 已经在 run_problem 内部打印了结果行
+        console.print(f"  [dim]────────────────────────────── 累计: 记忆 {len(mem_store)} 条[/dim]")
 
     # 保存结果
     results_file = output / "results.jsonl"
