@@ -73,17 +73,31 @@ def run_recreate_initial_creation(
         cost_limit=1.0,
     )
     
-    _model_kwargs = {
-        "custom_llm_provider": "openai",
-        "temperature": recreate_temp,
-    }
-    api_base = os.getenv("LLM_API_BASE")
-    if api_base:
-        _model_kwargs["api_base"] = api_base
+    # ── 模型初始化：优先使用教师模型（RECREATE_*），回退到学生模型（LLM_*）──────
+    _recreate_api_base = os.getenv("RECREATE_API_BASE")
+    _recreate_api_key = os.getenv("RECREATE_API_KEY")
+    _local_api_base = os.getenv("LLM_API_BASE")
+
+    _model_kwargs: dict = {"temperature": recreate_temp}
+
+    if _recreate_api_base:
+        # 外部教师模型（如 GLM-4.7）：直接设 api_base/key，不强制 openai provider
+        _model_kwargs["api_base"] = _recreate_api_base
+        _model_kwargs["api_key"] = _recreate_api_key or ""
+        # 外部模型不传 think/extra_body 参数
+    elif _local_api_base:
+        # 本地 LM Studio / vLLM：需要强制 openai provider
+        _model_kwargs["custom_llm_provider"] = "openai"
+        _model_kwargs["api_base"] = _local_api_base
         _model_kwargs["api_key"] = os.getenv("LLM_API_KEY", "lm-studio")
-    _llm_think = os.getenv("LLM_THINK")
-    if _llm_think is not None:
-        _model_kwargs["think"] = _llm_think.lower() not in ("false", "0", "no")
+        # 关闭 thinking：LM Studio 用 LLM_THINK，vLLM 用 LLM_EXTRA_BODY
+        _llm_think = os.getenv("LLM_THINK")
+        if _llm_think is not None:
+            _model_kwargs["think"] = _llm_think.lower() not in ("false", "0", "no")
+        _extra_body_str = os.getenv("LLM_EXTRA_BODY")
+        if _extra_body_str:
+            _model_kwargs["extra_body"] = json.loads(_extra_body_str)
+
     model = LitellmTextbasedModel(
         model_name=recreate_model,
         model_kwargs=_model_kwargs,
@@ -727,17 +741,31 @@ def run_batch_synthesis(
         cost_limit=3.0,
     )
     
-    _model_kwargs = {
-        "custom_llm_provider": "openai",
-        "temperature": recreate_temp,
-    }
-    api_base = os.getenv("LLM_API_BASE")
-    if api_base:
-        _model_kwargs["api_base"] = api_base
+    # ── 模型初始化：优先使用教师模型（RECREATE_*），回退到学生模型（LLM_*）──────
+    _recreate_api_base = os.getenv("RECREATE_API_BASE")
+    _recreate_api_key = os.getenv("RECREATE_API_KEY")
+    _local_api_base = os.getenv("LLM_API_BASE")
+
+    _model_kwargs: dict = {"temperature": recreate_temp}
+
+    if _recreate_api_base:
+        # 外部教师模型（如 GLM-4.7）：直接设 api_base/key，不强制 openai provider
+        _model_kwargs["api_base"] = _recreate_api_base
+        _model_kwargs["api_key"] = _recreate_api_key or ""
+        # 外部模型不传 think/extra_body 参数
+    elif _local_api_base:
+        # 本地 LM Studio / vLLM：需要强制 openai provider
+        _model_kwargs["custom_llm_provider"] = "openai"
+        _model_kwargs["api_base"] = _local_api_base
         _model_kwargs["api_key"] = os.getenv("LLM_API_KEY", "lm-studio")
-    _llm_think = os.getenv("LLM_THINK")
-    if _llm_think is not None:
-        _model_kwargs["think"] = _llm_think.lower() not in ("false", "0", "no")
+        # 关闭 thinking：LM Studio 用 LLM_THINK，vLLM 用 LLM_EXTRA_BODY
+        _llm_think = os.getenv("LLM_THINK")
+        if _llm_think is not None:
+            _model_kwargs["think"] = _llm_think.lower() not in ("false", "0", "no")
+        _extra_body_str = os.getenv("LLM_EXTRA_BODY")
+        if _extra_body_str:
+            _model_kwargs["extra_body"] = json.loads(_extra_body_str)
+
     model = LitellmTextbasedModel(
         model_name=recreate_model,
         model_kwargs=_model_kwargs,

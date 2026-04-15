@@ -87,17 +87,37 @@ INITIAL_INSTANCE_TEMPLATE = """Please solve the following math problem:
 
 - Your response MUST include AT LEAST ONE bash tool call every turn.
 - Use the bash tool to run Python scripts for any calculations.
-- When you have found the final answer, submit it by calling the bash tool with:
+- **IMPORTANT**: Once you have determined the final answer, you MUST submit it in the **same bash
+  block** as your final calculation — do NOT split computation and submission into separate steps.
+  Append the following lines at the end of your final Python script (replace ANSWER with your number):
+
+  ```python
+  # ... your calculation code above ...
+  print(f'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT')
+  print(ANSWER)
+  ```
+
+  Or use printf in the same bash block after the python call:
+  ```bash
+  python3 << 'EOF'
+  # ... your calculation ...
+  EOF
   printf 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\n%s\\n' ANSWER
+  ```
 
 ## Important Notes
 
 - For AIME problems, answers are integers from 0 to 999.
-- The submission command MUST print COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT on the first line,
-  followed by your numeric answer on the second line.
+- The submission MUST print COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT on its own line,
+  followed by your numeric answer on the next line.
+- Combining calculation and submission in ONE bash call saves a step — always do this.
 
-Example: if your answer is 73, call the bash tool with:
-  printf 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\n%s\\n' 73
+Example: if your answer is 73, your final bash call should be:
+  python3 << 'EOF'
+  result = 73
+  print('COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT')
+  print(result)
+  EOF
 
 Now please solve the problem."""
 
@@ -406,8 +426,10 @@ def main(
     output: Annotated[Path, typer.Option("--output", "-o", help="输出根目录")] = Path(
         "outputs/math_recreate"
     ),
-    recreate_model: Annotated[str | None, typer.Option("--recreate-model", help="ReCreate-Agent 模型（默认与 solver 相同）")] = None,
-    recreate_temp: Annotated[float, typer.Option("--recreate-temp", help="ReCreate-Agent 温度")] = 0.2,
+    recreate_model: Annotated[str | None, typer.Option("--recreate-model", help="ReCreate-Agent 模型（默认与 solver 相同，优先级低于 --teacher-model）")] = None,
+    recreate_temp: Annotated[float, typer.Option("--recreate-temp", help="ReCreate-Agent / 教师模型温度")] = 0.2,
+    teacher_model: Annotated[str | None, typer.Option("--teacher-model", help="ReCreate-Agent 和 Synthesis 使用的教师模型，如 zai/glm-4.7（优先级高于 --recreate-model）")] = None,
+    teacher_api_key: Annotated[str | None, typer.Option("--teacher-api-key", help="教师模型的 API Key（智谱 ZAI_API_KEY）")] = None,
 ):
     """运行 Math 数据集 ReCreate 进化测试（题目级别优化 + 批次级别合成）"""
     with open(config) as f:
@@ -420,25 +442,58 @@ def main(
     api_base = model_config.get("api_base", None)
     api_key = model_config.get("api_key", None)
     think = model_config.get("think", None)
+    extra_body = model_config.get("extra_body", None)
 
+    # ── 学生模型（求解）──────────────────────────────────────────────────────────
     model_kwargs: dict = {"temperature": temperature, "max_tokens": max_tokens, "drop_params": True}
     if api_base:
         model_kwargs["api_base"] = api_base
         model_kwargs["api_key"] = api_key or "lm-studio"
-        # 同步写入环境变量，供 evolution.py 里的 ReCreate-Agent 使用
+        # 供 evolution.py 里的 ReCreate-Agent 使用（仅学生模型 base，teacher 另行覆盖）
         os.environ["LLM_API_BASE"] = api_base
         os.environ["LLM_API_KEY"] = api_key or "lm-studio"
 
-    # 关闭 thinking 模式（qwen3 等思考模型默认 content 为空，导致 agent 无法解析命令）
+    # 关闭 thinking 模式（二选一，按部署方式选择）：
+    # - LM Studio：think: false
+    # - vLLM：extra_body.chat_template_kwargs.enable_thinking: false
     if think is not None:
         model_kwargs["think"] = think
         os.environ["LLM_THINK"] = str(think).lower()  # 供 evolution.py 里的 ReCreate-Agent 使用
+    if extra_body is not None:
+        model_kwargs["extra_body"] = extra_body
+        # 序列化后传给 evolution.py，让 ReCreate-Agent（LitellmTextbasedModel）也能透传
+        os.environ["LLM_EXTRA_BODY"] = json.dumps(extra_body)
+    else:
+        os.environ.pop("LLM_EXTRA_BODY", None)
 
-    recreate_model_name = recreate_model or model_name
+    # ── 教师模型（ReCreate-Agent + Batch Synthesis）──────────────────────────────
+    if teacher_model:
+        _teacher_key = (
+            teacher_api_key
+            or os.getenv("ZAI_API_KEY")
+            or os.getenv("ZHIPUAI_API_KEY")
+        )
+        if not _teacher_key:
+            console.print("[red]错误：使用教师模型需要提供 --teacher-api-key 或设置 ZAI_API_KEY 环境变量[/red]")
+            raise typer.Exit(1)
+        recreate_model_name = teacher_model
+        # 写入专用 env vars，供 evolution.py 优先读取（覆盖 LLM_API_BASE）
+        os.environ["RECREATE_API_BASE"] = "https://open.bigmodel.cn/api/paas/v4"
+        os.environ["RECREATE_API_KEY"] = _teacher_key
+    else:
+        # 未指定教师模型，退化为 --recreate-model 或学生模型
+        recreate_model_name = recreate_model or model_name
+        # 确保 RECREATE_* 不残留（防止环境变量污染）
+        os.environ.pop("RECREATE_API_BASE", None)
+        os.environ.pop("RECREATE_API_KEY", None)
 
     console.print(f"\n[bold blue]Math ReCreate 进化测试[/bold blue]")
     console.print(f"数据源: [cyan]{data_source}[/cyan]  每批题数: [cyan]{max_instances}[/cyan]  批次: [cyan]{max_rounds}[/cyan]")
-    console.print(f"Solver 模型: [cyan]{model_name}[/cyan]  ReCreate 模型: [cyan]{recreate_model_name}[/cyan]")
+    console.print(f"[cyan]🎓 学生模型（求解）: {model_name}[/cyan]")
+    if teacher_model:
+        console.print(f"[magenta]🧑‍🏫 教师模型（ReCreate + Synthesis）: {recreate_model_name}[/magenta]")
+    else:
+        console.print(f"[yellow]⚠️  未指定教师模型，ReCreate/Synthesis 使用: {recreate_model_name}[/yellow]")
     console.print(f"输出目录: [cyan]{output}[/cyan]\n")
 
     base_path = config_data.get("dataset", {}).get("base_path", "datasets/math/data")

@@ -90,19 +90,37 @@ MATH_INSTANCE_TEMPLATE = """Please solve the following math problem:
 
 - Your response MUST include AT LEAST ONE bash tool call every turn.
 - Use the bash tool to run Python scripts for any calculations.
-- When you have found the final answer, submit it by calling the bash tool with the following command.
-  Replace ANSWER with your actual numeric answer (e.g., 73):
+- **IMPORTANT**: Once you have determined the final answer, you MUST submit it in the **same bash
+  block** as your final calculation — do NOT split computation and submission into separate steps.
+  Append the following lines at the end of your final Python script (replace ANSWER with your number):
 
+  ```python
+  # ... your calculation code above ...
+  print(f'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT')
+  print(ANSWER)
+  ```
+
+  Or use printf in the same bash block after the python call:
+  ```bash
+  python3 << 'EOF'
+  # ... your calculation ...
+  EOF
   printf 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\n%s\\n' ANSWER
+  ```
 
 ## Important Notes
 
 - For AIME problems, answers are integers from 0 to 999.
-- The submission command MUST print COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT on the first line,
-  followed by your numeric answer on the second line.
+- The submission MUST print COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT on its own line,
+  followed by your numeric answer on the next line.
+- Combining calculation and submission in ONE bash call saves a step — always do this.
 
-Example: if your answer is 73, call the bash tool with:
-  printf 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\n%s\\n' 73
+Example: if your answer is 73, your final bash call should be:
+  python3 << 'EOF'
+  result = 73
+  print('COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT')
+  print(result)
+  EOF
 
 Now please solve the problem."""
 
@@ -278,7 +296,7 @@ def run_single_problem(
         if extracted_answer:
             extracted_answer = normalize_answer(extracted_answer)
 
-        # 回退：submission 为空时，从对话历史里搜索 \boxed{...}
+        # 回退一：submission 为空时，从 assistant 消息内容里搜索
         if not extracted_answer:
             print("[DEBUG] submission 中未找到答案，回退到对话历史搜索...")
             for msg in reversed(agent.messages):
@@ -288,8 +306,27 @@ def run_single_problem(
                     fallback = extract_final_answer(content)
                     if fallback:
                         extracted_answer = normalize_answer(fallback)
-                        print(f"[DEBUG] 从对话历史中找到答案: {extracted_answer}")
+                        print(f"[DEBUG] 从 assistant 消息中找到答案: {extracted_answer}")
                         break
+
+        # 回退二：扫描 tool（bash 执行结果）消息，找 COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT 信号
+        # 触发场景：_check_finished 未能捕获（如 returncode != 0），或 submission 被后续 LimitsExceeded 覆盖
+        if not extracted_answer:
+            print("[DEBUG] 回退到 bash 输出扫描...")
+            for msg in reversed(agent.messages):
+                if msg.get("role") != "tool":
+                    continue
+                raw = msg.get("extra", {}).get("raw_output", "") or msg.get("content", "") or ""
+                lines = raw.splitlines()
+                for i, line in enumerate(lines):
+                    if line.strip() == "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" and i + 1 < len(lines):
+                        candidate = normalize_answer(lines[i + 1].strip())
+                        if candidate:
+                            extracted_answer = candidate
+                            print(f"[DEBUG] 从 bash 输出中找到提交答案: {extracted_answer}")
+                            break
+                if extracted_answer:
+                    break
 
         # 评估
         if extracted_answer:
@@ -453,6 +490,7 @@ def main(
     api_key = model_config.get("api_key", None)
     num_ctx = model_config.get("num_ctx", None)
     think = model_config.get("think", None)
+    extra_body = model_config.get("extra_body", None)
 
     # 构建 model_kwargs
     model_kwargs = {
@@ -470,9 +508,13 @@ def main(
     if num_ctx:
         model_kwargs["num_ctx"] = num_ctx
 
-    # 关闭 thinking 模式（qwen3 等思考模型默认 content 为空，导致 agent 无法解析命令）
+    # 关闭 thinking 模式（二选一，按部署方式选择）：
+    # - LM Studio：think: false（在系统 prompt 注入 /no_think）
+    # - vLLM：extra_body.chat_template_kwargs.enable_thinking: false（透传到请求 body）
     if think is not None:
         model_kwargs["think"] = think
+    if extra_body is not None:
+        model_kwargs["extra_body"] = extra_body
     
     console.print(f"[yellow]创建模型: {model_name}[/yellow]")
     console.print(f"[yellow]model_kwargs: {model_kwargs}[/yellow]")

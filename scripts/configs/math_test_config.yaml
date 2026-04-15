@@ -2,15 +2,27 @@
 # 用于 mini-swe-agent 测试 Math 数据集
 
 # 模型配置
+# model:
+#   # === 本地模型配置 (LMStudio) ===
+#   model: "lm_studio/qwen/qwen3.5-9b"  #
+#   api_base: "http://0.0.0.0:1234/v1"  
+#   api_key: "lmstudio"  # 占位符，litellm 调用时通常需要非空字符串
+#   max_tokens: 8192
+#   temperature: 0.0
+#   think: false  # LM Studio 专用：关闭 thinking 模式（在系统 prompt 里注入 /no_think）
+
 model:
-  # === 本地模型配置 (LMStudio) ===
-  model: "lm_studio/qwen/qwen3.5-9b"  #
-  api_base: "http://0.0.0.0:1234/v1"  
-  api_key: "lmstudio"  # 占位符，litellm 调用时通常需要非空字符串
-  max_tokens: 12800
+  model: "openai//root/autodl-tmp/huggingface/Qwen3.5-9B"
+  api_base: "https://u155745-827f-dc6ad2dd.westc.gpuhub.com:8443/v1"
+  api_key: "sk_123456"
+  max_tokens: 8192       # 这个随便设置以vllm启动传入的参数为准
   temperature: 0.0
-  think: false  # 关闭 thinking 模式（qwen3 等思考模型默认 content 为空，导致 agent 无法解析命令）
-  
+  # vLLM 关闭 thinking 的正确方式：通过 chat_template_kwargs 传入请求 body
+  # （think: false 是 LM Studio 专用参数，vLLM 不识别）
+  extra_body:
+    chat_template_kwargs:
+      enable_thinking: false
+   
 
   # === 其他模型选项（取消注释使用） ===
   

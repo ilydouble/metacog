@@ -47,3 +47,5 @@ datasets/
 .mypy_cache/
 .ruff_cache/
 
+./src/mini-swe-agent
+.zip

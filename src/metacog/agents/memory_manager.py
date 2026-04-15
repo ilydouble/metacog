@@ -1,112 +1,133 @@
-"""MemoryManagerAgent - 订阅 AnalysisEvent，将 lesson 写入 MemoryStore。"""
+"""MemoryManagerAgent - 订阅 AnalysisEvent，将结构化 lesson 写入 memU 向量库。
+
+改造要点
+--------
+1. 接收 AnalyzerAgent 输出的结构化 JSON
+2. 将 root_cause + actionable_advice 拼接为向量化文本
+3. 存入 memU 的语义记忆层
+4. 保留 YAML 作为人类 debug 备份（可选）
+"""
 
 from __future__ import annotations
+
+from pathlib import Path
 
 from minisweagent.models.litellm_model import LitellmModel
 
 from ..bus import Event, EventBus, EventType
+from ..memory.memu_client import MemUClient
 from ..memory.store import MemoryEntry, MemoryStore
 from .base import BaseAgent
 
 
 class MemoryManagerAgent(BaseAgent):
-    """记忆管理智能体。
+    """记忆管理智能体（memU 版本）。
 
-    订阅 AnalysisEvent → 决定是追加新记忆还是合并到已有记忆 → 更新 MemoryStore。
+    订阅 AnalysisEvent → 提取结构化 JSON → 写入 memU 向量库。
 
-    合并策略（简单版）：
-    - 如果 MemoryStore 里已有相同 tags 的记忆超过阈值 `merge_threshold`，
-      则调用 LLM 将新 lesson 与已有记忆合并成一条；
-    - 否则直接追加。
+    核心改造
+    --------
+    - 不再使用 YAML 作为主存储（保留为人类 debug 备份）
+    - 将 root_cause + actionable_advice 作为向量化内容
+    - 将 problem_tags, error_symptom 作为元数据
+    - 使用 memU 的语义检索能力
     """
 
     name = "memory_manager"
-
-    _MERGE_SYSTEM = """\
-You are managing a memory store for a math problem-solving agent.
-Given an existing memory entry and a new lesson, merge them into a single, improved entry.
-Output JSON only:
-{
-  "title": "merged title (max 10 words)",
-  "content": "merged content (2-4 sentences, actionable, in English)",
-  "tags": ["tag1", "tag2"]
-}
-"""
 
     def __init__(
         self,
         model: LitellmModel,
         bus: EventBus,
-        memory_store: MemoryStore,
-        merge_threshold: int = 3,
+        memory_store: MemoryStore | None = None,  # 保留为可选的 debug 备份
+        memu_persist_dir: Path | str | None = None,  # memU 向量库目录
+        collection_name: str = "math_lessons",
     ) -> None:
         super().__init__(model, bus)
-        self.store = memory_store
-        self.merge_threshold = merge_threshold
+        self.store = memory_store  # 可选的 YAML 备份
+
+        # 初始化 memU 客户端（核心存储）
+        self.memu = MemUClient(
+            collection_name=collection_name,
+            persist_dir=memu_persist_dir,
+        )
 
     def _register_handlers(self) -> None:
         self.bus.subscribe(EventType.ANALYSIS, self._on_analysis)
 
     def _on_analysis(self, event: Event) -> None:
+        """处理失败分析结果，存入 memU 向量库"""
         analysis = event.data.get("analysis", {})
         problem_id = event.data.get("problem_id", "unknown")
+        problem_text = event.data.get("problem_text", "")
 
-        if "error" in analysis and "lesson_title" not in analysis:
-            return  # 分析失败，跳过
-
-        title = analysis.get("lesson_title", "Untitled lesson")
-        content = analysis.get("lesson_content", "")
-        tags = analysis.get("tags", [])
-
-        if not content:
+        # 跳过无效分析
+        if "error" in analysis or analysis.get("skip"):
             return
 
-        # 检查是否需要合并
-        existing = []
-        for tag in tags:
-            existing.extend(self.store.query_by_tag(tag))
-        # 去重
-        seen_ids: set[str] = set()
-        candidates = [e for e in existing if not (e.id in seen_ids or seen_ids.add(e.id))]  # type: ignore
+        # 提取结构化字段（Markdown 键值对，key 全小写）
+        raw_tags = analysis.get("problem_tags", "")
+        problem_tags = [t.strip() for t in raw_tags.split(",") if t.strip()] if isinstance(raw_tags, str) else raw_tags
 
-        if candidates and len(candidates) >= self.merge_threshold:
-            # 取最相关的一条做合并
-            target = candidates[0]
-            merged = self._merge(target, title, content, tags)
-            if merged:
-                self.store.update(
-                    target.id,
-                    title=merged.get("title", target.title),
-                    content=merged.get("content", target.content),
-                    tags=merged.get("tags", target.tags),
+        # 🔥 ChromaDB 不允许空 list
+        if not problem_tags:
+            problem_tags = ["general"]
+
+        error_symptom = analysis.get("error_symptom", "")
+        root_cause = analysis.get("root_cause", "")
+        actionable_advice = analysis.get("actionable_advice", "")
+
+        if not root_cause or not actionable_advice:
+            print(f"  [MemoryManager] 警告: 缺少核心内容，跳过存储", flush=True)
+            return
+
+        # ========================================
+        # 核心改造：构造 memU 文档
+        # ========================================
+        # 1. 拼接向量化内容（核心教训）
+        document_content = f"错误原因：{root_cause}\n解决策略：{actionable_advice}"
+
+        # 2. 构造元数据（用于过滤和混合检索）
+        metadata = {
+            "tags": problem_tags,  # list[str]
+            "symptom": error_symptom,
+            "problem_id": problem_id,
+            "source_problem": problem_text[:200],  # 截取前200字符作为线索
+        }
+
+        # 3. 写入 memU 向量库（不做去重，交给 MemoryEvaluator 延迟合并）
+        try:
+            memory_id = self.memu.add_memory(
+                content=document_content,
+                metadata=metadata
+            )
+            print(f"  [MemoryManager] ✓ 写入 memU: {memory_id} | tags={problem_tags}", flush=True)
+        except Exception as exc:
+            print(f"  [MemoryManager] ✗ memU 写入失败: {exc}", flush=True)
+            return
+
+        # ========================================
+        # 可选：同时写入 YAML 作为人类 debug 备份
+        # ========================================
+        if self.store:
+            try:
+                entry = MemoryEntry(
+                    title=f"[{'/'.join(problem_tags[:2])}] {error_symptom[:50]}",
+                    content=document_content,
+                    tags=problem_tags,
                 )
-                self._publish(Event(
-                    type=EventType.MEMORY_UPDATED,
-                    data={"action": "merged", "entry_id": target.id, "problem_id": problem_id},
-                ))
-                return
+                self.store.append(entry)
+            except Exception:
+                pass  # YAML 备份失败不影响核心流程
 
-        # 追加新记忆
-        entry = MemoryEntry(title=title, content=content, tags=tags)
-        self.store.append(entry)
+        # 4. 发布更新完成事件
         self._publish(Event(
             type=EventType.MEMORY_UPDATED,
-            data={"action": "appended", "entry_id": entry.id, "problem_id": problem_id},
+            data={
+                "action": "added_to_memu",
+                "memory_id": memory_id,
+                "problem_id": problem_id,
+                "tags": problem_tags,
+            },
         ))
-
-    def _merge(self, existing: MemoryEntry, new_title: str, new_content: str, new_tags: list[str]) -> dict | None:
-        """调用 LLM 合并两条记忆，返回合并后的 dict。"""
-        import json, re
-        user_msg = (
-            f"Existing entry:\nTitle: {existing.title}\nContent: {existing.content}\n\n"
-            f"New lesson:\nTitle: {new_title}\nContent: {new_content}"
-        )
-        try:
-            response = self._llm_call(self._MERGE_SYSTEM, user_msg, temperature=0.0, max_tokens=256)
-            m = re.search(r"\{.*\}", response, re.DOTALL)
-            if m:
-                return json.loads(m.group())
-        except Exception:
-            pass
-        return None
 

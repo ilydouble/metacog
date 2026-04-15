@@ -80,17 +80,37 @@ INITIAL_INSTANCE_TEMPLATE = """Please solve the following math problem:
 
 - Your response MUST include AT LEAST ONE bash tool call every turn.
 - Use the bash tool to run Python scripts for any calculations.
-- When you have found the final answer, submit it by calling the bash tool with:
+- **IMPORTANT**: Once you have determined the final answer, you MUST submit it in the **same bash
+  block** as your final calculation — do NOT split computation and submission into separate steps.
+  Append the following lines at the end of your final Python script (replace ANSWER with your number):
+
+  ```python
+  # ... your calculation code above ...
+  print(f'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT')
+  print(ANSWER)
+  ```
+
+  Or use printf in the same bash block after the python call:
+  ```bash
+  python3 << 'EOF'
+  # ... your calculation ...
+  EOF
   printf 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\n%s\\n' ANSWER
+  ```
 
 ## Important Notes
 
 - For AIME problems, answers are integers from 0 to 999.
-- The submission command MUST print COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT on the first line,
-  followed by your numeric answer on the second line.
+- The submission MUST print COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT on its own line,
+  followed by your numeric answer on the next line.
+- Combining calculation and submission in ONE bash call saves a step — always do this.
 
-Example: if your answer is 73, call the bash tool with:
-  printf 'COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\\n%s\\n' 73
+Example: if your answer is 73, your final bash call should be:
+  python3 << 'EOF'
+  result = 73
+  print('COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT')
+  print(result)
+  EOF
 
 Now please solve the problem."""
 
@@ -498,6 +518,8 @@ def main(
         "outputs/math_evolve"
     ),
     save_trajectories: Annotated[bool, typer.Option(help="是否保存 agent 轨迹")] = True,
+    teacher_model: Annotated[Optional[str], typer.Option("--teacher-model", help="元智能体（进化）使用的教师模型，如 zai/glm-4.7")] = None,
+    teacher_api_key: Annotated[Optional[str], typer.Option("--teacher-api-key", help="教师模型的 API Key（智谱 ZAI_API_KEY）")] = None,
 ):
     """运行 Math 数据集进化测试（多轮 Scaffold 优化）"""
     # 加载配置
@@ -511,7 +533,10 @@ def main(
     max_tokens = model_config.get("max_tokens", 4096)
     api_base = model_config.get("api_base", None)
     api_key = model_config.get("api_key", None)
+    think = model_config.get("think", None)
+    extra_body = model_config.get("extra_body", None)
 
+    # ── 学生模型（求解）──────────────────────────────────────────────────────────
     model_kwargs: dict = {
         "temperature": temperature,
         "max_tokens": max_tokens,
@@ -521,10 +546,44 @@ def main(
     if api_base:
         model_kwargs["api_base"] = api_base
         model_kwargs["api_key"] = api_key or "lm-studio"
+    # 关闭 thinking：LM Studio 用 think，vLLM 用 extra_body
+    if think is not None:
+        model_kwargs["think"] = think
+    if extra_body is not None:
+        model_kwargs["extra_body"] = extra_body
+
+    # ── 教师模型（元智能体进化 scaffold）────────────────────────────────────────
+    if teacher_model:
+        # 优先使用命令行传入的 key，其次读环境变量
+        _teacher_key = (
+            teacher_api_key
+            or os.getenv("ZAI_API_KEY")
+            or os.getenv("ZHIPUAI_API_KEY")
+        )
+        if not _teacher_key:
+            console.print("[red]错误：使用教师模型需要提供 --teacher-api-key 或设置 ZAI_API_KEY 环境变量[/red]")
+            raise typer.Exit(1)
+        teacher_model_name = teacher_model
+        teacher_model_kwargs: dict = {
+            "temperature": 0.0,
+            "max_tokens": 4096,
+            "drop_params": True,
+            "api_base": "https://open.bigmodel.cn/api/paas/v4",
+            "api_key": _teacher_key,
+        }
+    else:
+        # 未指定教师模型，退化为与学生模型相同
+        teacher_model_name = model_name
+        teacher_model_kwargs = {k: v for k, v in model_kwargs.items() if k != "tool_choice"}
 
     console.print(f"\n[bold blue]Math 进化测试[/bold blue]")
     console.print(f"数据源: [cyan]{data_source}[/cyan]  最大问题数: [cyan]{max_instances}[/cyan]  轮数: [cyan]{max_rounds}[/cyan]")
-    console.print(f"模型: [cyan]{model_name}[/cyan]  输出目录: [cyan]{output}[/cyan]\n")
+    console.print(f"[cyan]🎓 学生模型（求解）: {model_name}[/cyan]")
+    if teacher_model:
+        console.print(f"[magenta]🧑‍🏫 教师模型（进化）: {teacher_model_name}[/magenta]")
+    else:
+        console.print(f"[yellow]⚠️  未指定教师模型，进化使用学生模型[/yellow]")
+    console.print(f"输出目录: [cyan]{output}[/cyan]\n")
 
     # 加载数据集
     base_path = config_data.get("dataset", {}).get("base_path", "datasets/math/data")
@@ -592,13 +651,13 @@ def main(
             console.print("[dim]最后一轮，不执行 scaffold 优化。[/dim]")
             break
 
-        # 元智能体进化 scaffold
-        console.print(f"\n[yellow]>>> 元智能体优化 Scaffold...[/yellow]")
+        # 元智能体进化 scaffold（使用教师模型）
+        console.print(f"\n[yellow]>>> 元智能体优化 Scaffold（{teacher_model_name}）...[/yellow]")
         improved_scaffold = evolve_scaffold(
             scaffold=scaffold,
             results=results,
-            model_name=model_name,
-            model_kwargs=model_kwargs,
+            model_name=teacher_model_name,
+            model_kwargs=teacher_model_kwargs,
         )
 
         if improved_scaffold:

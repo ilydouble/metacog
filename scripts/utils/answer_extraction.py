@@ -84,59 +84,64 @@ def extract_final_answer(text: str) -> Optional[str]:
 
 def normalize_answer(answer: str) -> str:
     """标准化答案格式
-    
+
     处理：
-    - 去除前后空格
-    - 统一大小写
+    - 去除首尾空白和换行
+    - 去除 LaTeX 格式符号（\\boxed{x} → x 等）
+    - 去除 $ 符号
+    - 去除首尾常见标点（句号、逗号等），避免 "588." 与 "588" 比对失败
     - 处理前导零（如 073 -> 73）
-    - 处理分数格式
-    - 处理小数格式
-    
+    - 处理小数格式（去除尾部多余的零）
+    - 处理分数格式（约分）
+
+    注意：不对答案内容做数据集相关的假设（如"答案一定是整数"），
+    保持对整数、小数、分数、文字等各类答案的通用性。
+
     Args:
         answer: 原始答案字符串
-        
+
     Returns:
         标准化后的答案字符串
     """
     if not answer:
         return ""
-    
-    # 去除空格和换行
+
+    # 去除首尾空白（含换行）
     answer = answer.strip()
-    
+
     # 去除 LaTeX 格式符号
     answer = re.sub(r'\\[a-zA-Z]+\{([^}]*)\}', r'\1', answer)
     answer = re.sub(r'\\[a-zA-Z]+', '', answer)
-    
+
     # 去除 $ 符号
     answer = answer.replace('$', '')
-    
-    # 去除前后空格
+
+    # 去除首尾常见标点（句号/逗号/分号等），再次 strip 空白
+    # 只去首尾，不动中间内容，对分数、小数、文字答案均安全
+    answer = answer.strip('.,;:!?')
     answer = answer.strip()
-    
+
     # 尝试处理数值
     try:
         # 检查是否是整数（可能带前导零）
         if re.match(r'^-?0*\d+$', answer):
             return str(int(answer))
-        
+
         # 检查是否是小数
         if re.match(r'^-?\d+\.\d+$', answer):
-            # 保留原始精度，但去除尾部多余的零
+            # 去除尾部多余的零
             return str(float(answer)).rstrip('0').rstrip('.')
-        
+
         # 检查是否是分数
         if re.match(r'^-?\d+/\d+$', answer):
-            # 保持分数格式，但简化
             parts = answer.split('/')
             num, den = int(parts[0]), int(parts[1])
-            # 约分
             from math import gcd
-            g = gcd(abs(num), abs(den))
+            g = gcd(abs(num), den)
             return f"{num // g}/{den // g}"
     except (ValueError, ZeroDivisionError):
         pass
-    
+
     return answer
 
 
