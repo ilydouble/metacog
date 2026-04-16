@@ -15,7 +15,7 @@ model:
   model: "openai//root/autodl-tmp/huggingface/Qwen3.5-9B"
   api_base: "https://u155745-827f-dc6ad2dd.westc.gpuhub.com:8443/v1"
   api_key: "sk_123456"
-  max_tokens: 8192       # 这个随便设置以vllm启动传入的参数为准
+  max_tokens: 12800       # 这个随便设置以vllm启动传入的参数为准
   temperature: 0.0
   # vLLM 关闭 thinking 的正确方式：通过 chat_template_kwargs 传入请求 body
   # （think: false 是 LM Studio 专用参数，vLLM 不识别）

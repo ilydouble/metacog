@@ -134,10 +134,21 @@ class ExecutorAgent(BaseAgent):
                 retrieved_memories = [m for m in retrieved_memories if m.distance <= 0.75]
 
                 if retrieved_memories:
-                    # 组装极度精简的记忆注入
-                    memory_injection = "\n## 📚 历史避坑指南\n在处理类似问题时，你曾经犯过错，请务必遵守以下教训：\n\n"
+                    # 计算平均相似度（显示在标题里）
+                    avg_similarity = 1 - sum(m.distance for m in retrieved_memories) / len(retrieved_memories)
+
+                    # 组装记忆注入（英文统一格式 + 显示相似度）
+                    memory_injection = (
+                        f"\n## 📚 Historical Lessons (Avg Relevance: {avg_similarity:.0%})\n"
+                        "The following are insights extracted from similar problems you previously encountered.\n"
+                        "They may or may not apply to the current task. Use them as **reference**, not rigid rules.\n\n"
+                    )
+
                     for idx, mem in enumerate(retrieved_memories, 1):
-                        memory_injection += f"{idx}. {mem.content}\n"
+                        sim = 1 - mem.distance
+                        # mem.content 格式: "Problem type: ...\nError: ...\nFix: ..." (英文)
+                        memory_injection += f"### Lesson {idx} (Relevance: {sim:.0%})\n{mem.content}\n"
+                        memory_injection += "⚠️  **Applicability**: Only use this insight if the current problem shares the same mathematical structure.\n\n"
                         used_memory_ids.append(("semantic", mem.id))
 
                     system_template = system_template.rstrip() + "\n\n" + memory_injection

@@ -169,10 +169,10 @@ class EpisodicMemory:
 
         cases = cases[:max_cases]
         lines = [
-            "## 💡 Possibly Similar Problem (For Reference Only)",
-            "The following is a problem that may share a similar structure or technique.",
-            "It is NOT guaranteed to be the same type. Use the reasoning approach as inspiration,",
-            "but solve the current problem independently.\n",
+            "## 💡 Similar Success Case (For Reference Only)",
+            "The following case(s) may share structural or technical similarities with your current problem.",
+            "**Important**: Similarity does NOT guarantee the same solution approach applies.",
+            "Use the reasoning pattern as **inspiration**, and adapt it to your specific problem.\n",
         ]
 
         for i, case in enumerate(cases, 1):
@@ -194,11 +194,11 @@ class EpisodicMemory:
                 elif line.strip().startswith(("1.", "2.", "3.", "4.", "5.")):
                     steps_section += line.strip() + "\n"
 
-            lines.append(f"### Reference Case {i} (similarity: {similarity:.0%}, tags: {tags})")
+            lines.append(f"### Case {i} (Similarity: {similarity:.0%} | Tags: {tags})")
             if steps_section:
-                lines.append(f"Key reasoning steps:\n{steps_section.strip()}")
+                lines.append(f"**Key Reasoning Steps:**\n{steps_section.strip()}")
             if insight_section:
-                lines.append(insight_section.strip())
-            lines.append("\n⚠️  Apply the method above only if it fits the current problem.\n")
+                lines.append(f"**{insight_section.strip()}**")
+            lines.append("\n⚠️  **Adapt, don't copy**: Only use this approach if the problem structure truly matches.\n")
 
         return "\n".join(lines)
