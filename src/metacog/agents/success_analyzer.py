@@ -84,10 +84,13 @@ class SuccessAnalyzer(BaseAgent):
             print(f"  [SuccessAnalyzer] ✗ 轨迹为空", flush=True)
             return
 
-        # 🔥 过滤：agent 实际执行步数 < 3，说明问题太简单，没有值得学习的推理链
-        n_steps = sum(1 for m in trajectory if m.get("role") == "assistant" and m.get("tool_calls"))
-        if n_steps < 3:
-            print(f"  [SuccessAnalyzer] ⚠️  步数太少（{n_steps} 步），题目过于简单，跳过情景记忆存储", flush=True)
+        # 过滤：步数 < 2 说明模型完全没有写代码（纯文字作答），不值得存
+        # 使用 event 里 Executor 传入的 n_steps，与日志显示口径一致
+        # （避免重新统计 assistant tool_call 消息数导致的口径不一致：
+        #   PoT 注入的 user 反思消息会被日志计入步数，但不会产生 assistant 消息）
+        n_steps = data.get("n_steps", 0)
+        if n_steps < 2:
+            print(f"  [SuccessAnalyzer] ⚠️  步数太少（{n_steps} 步），模型未写代码，跳过情景记忆存储", flush=True)
             return
         
         # 提取关键步骤
@@ -112,6 +115,7 @@ class SuccessAnalyzer(BaseAgent):
         core_insight = analysis.get("core_insight", "")
         raw_tags = analysis.get("tags", "")
         tags = [t.strip() for t in raw_tags.split(",") if t.strip()] if isinstance(raw_tags, str) else raw_tags
+        problem_type = analysis.get("problem_type", "")
 
         # 🔥 ChromaDB 不允许空 list，如果 tags 为空，给默认值
         if not tags:
@@ -138,6 +142,7 @@ class SuccessAnalyzer(BaseAgent):
                 key_insight=core_insight,
                 tags=tags,
                 answer=answer,
+                problem_type=problem_type,
             )
             print(f"  [SuccessAnalyzer] ✓ 存入情景记忆: {memory_id[:12]} | tags={tags}", flush=True)
         except Exception as exc:
@@ -317,13 +322,15 @@ class SuccessAnalyzer(BaseAgent):
         system_prompt = """\
 You are a math solution analyst. Extract reusable techniques from successful solutions.
 
-You may think, but your response MUST end with EXACTLY these three lines (no markdown, no backticks):
+You may think, but your response MUST end with EXACTLY these four lines (no markdown, no backticks):
 
+[Problem_Type]: abstract 1-sentence description of the mathematical structure (NOT specific numbers, focus on the technique/domain)
 [Key_Steps]: step1 | step2 | step3
 [Core_Insight]: why this approach worked (1 sentence, max 20 words)
 [Tags]: tag1, tag2
 
 EXAMPLE output ending:
+[Problem_Type]: divisor enumeration over base representations to satisfy divisibility constraint
 [Key_Steps]: convert to base-10 | find divisors | filter valid bases
 [Core_Insight]: divisor enumeration directly yields valid bases satisfying the divisibility constraint
 [Tags]: number_theory, divisibility"""

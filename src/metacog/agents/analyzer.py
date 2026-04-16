@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -66,6 +67,7 @@ You are a math tutor analyzing student errors. Extract a reusable lesson.
 
 OUTPUT FORMAT (MANDATORY - your ENTIRE response must be ONLY this):
 
+[Problem_Type]: abstract 1-sentence description of the mathematical structure (focus on technique/domain, NOT specific numbers)
 [Problem_Tags]: tag1, tag2
 [Error_Symptom]: what went wrong
 [Root_Cause]: why it happened
@@ -73,13 +75,14 @@ OUTPUT FORMAT (MANDATORY - your ENTIRE response must be ONLY this):
 [Needs_Code_Verification]: true
 
 EXAMPLE:
+[Problem_Type]: modular arithmetic on products of consecutive integers requiring step-wise reduction
 [Problem_Tags]: number_theory, modular_arithmetic
 [Error_Symptom]: forgot modular reduction after multiplication
 [Root_Cause]: missed the requirement to apply mod at each step
 [Actionable_Advice]: always apply % m after each arithmetic operation in modular context
 [Needs_Code_Verification]: true
 
-Do NOT include any explanation. Output ONLY the five lines above."""
+Do NOT include any explanation. Output ONLY the six lines above."""
 
 _SUCCESS_CHUNK_SYSTEM = """\
 You are reviewing a segment of a SUCCESSFUL AI math-solving trajectory.
@@ -117,6 +120,32 @@ Expected: {expected_answer}  Got: {extracted_answer}  Steps: {n_steps}
 
 Full trajectory:
 {trajectory}"""
+
+# ------------------------------------------------------------------ #
+# Phase 2: 解题思路提示（只看题目，不受失败轨迹污染）
+# ------------------------------------------------------------------ #
+_HINT_SYSTEM = """\
+You are a math olympiad coach. A student just failed to solve a problem.
+Given ONLY the problem statement, provide a concise solution hint.
+
+OUTPUT FORMAT (your ENTIRE response must be ONLY this):
+
+[Key_Insight]: the core mathematical idea, theorem, or technique needed
+[Approach]: brief 2-3 step strategy (numbered, e.g. 1. do X  2. do Y)
+[Common_Pitfall]: the most likely mistake to avoid
+
+EXAMPLE:
+[Key_Insight]: Use perpendicular bisector — |z-a|=|z-b| defines a line, then check tangency with circle
+[Approach]: 1. Simplify second equation to a linear constraint  2. Apply point-to-line distance formula  3. Solve |distance| = radius for both ± cases
+[Common_Pitfall]: Missing the second tangent case (distance = −radius)
+
+Do NOT give the full solution. Output ONLY the three lines above."""
+
+_HINT_USER = """\
+Problem: {problem}
+
+This is a competition math problem. The answer is an integer from 0-999.
+Provide a concise hint focusing on the KEY mathematical insight."""
 
 
 class AnalyzerAgent(BaseAgent):
@@ -207,25 +236,51 @@ class AnalyzerAgent(BaseAgent):
         if inefficient_approach:
             extra_context += f"\n[INEFFICIENT] {inefficient_approach}"
 
-        # 蒸馏成最终记忆条目
-        print(f"  [Analyzer] 蒸馏完整轨迹 → 记忆条目...", flush=True)
-        try:
-            analysis = self._distill(
+        problem_text = data.get("problem", "")
+
+        # ========================================
+        # 🔥 Phase 1 + Phase 2 并行：错误分析 & 解题思路
+        # ========================================
+        print(f"  [Analyzer] 并行执行: 蒸馏轨迹（Phase 1）+ 生成解题思路（Phase 2）...", flush=True)
+        analysis = {"skip": True, "error": "not_started"}
+        hint_result: Optional[dict] = None
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            future_distill = pool.submit(
+                self._distill,
                 steps=steps,
-                problem=data.get("problem", "")[:300],
+                problem=problem_text[:300],
                 expected_answer=data.get("expected_answer", ""),
                 extracted_answer=data.get("extracted_answer") or "(none)",
                 n_steps=data.get("n_steps", 0),
                 extra_context=extra_context,
             )
-        except Exception as exc:
-            print(f"  [Analyzer] ❌ 蒸馏发生异常: {exc}", flush=True)
-            import traceback
-            traceback.print_exc()
-            analysis = {"skip": True, "error": str(exc)}
+            future_hint = pool.submit(
+                self._generate_hint,
+                problem=problem_text[:500],
+            )
+
+            try:
+                analysis = future_distill.result()
+            except Exception as exc:
+                print(f"  [Analyzer] ❌ 蒸馏发生异常: {exc}", flush=True)
+                import traceback
+                traceback.print_exc()
+                analysis = {"skip": True, "error": str(exc)}
+
+            try:
+                hint_result = future_hint.result()
+                if hint_result:
+                    print(f"  [Analyzer] ✅ 解题思路生成完成", flush=True)
+            except Exception as exc:
+                print(f"  [Analyzer] ⚠️ 解题思路生成失败: {exc}", flush=True)
 
         if "error" in analysis or analysis.get("skip"):
             return
+
+        # 将 Phase 2 的解题思路合并进 analysis
+        if hint_result:
+            analysis["solution_hint"] = hint_result
 
         # ========================================
         # 🔥 PoT 增强：对数学计算错误进行程序验证
@@ -420,6 +475,36 @@ class AnalyzerAgent(BaseAgent):
             parsed["problem_tags"] = [str(parsed["problem_tags"])]
 
         return parsed
+
+    def _generate_hint(self, problem: str) -> Optional[dict]:
+        """Phase 2：GLM 只看题目，独立生成解题思路提示（不受失败轨迹影响）。
+
+        返回包含 key_insight / approach / common_pitfall 的 dict，或 None（失败时）。
+        """
+        user_msg = _HINT_USER.format(problem=problem)
+        try:
+            response = self._llm_call(
+                system=_HINT_SYSTEM,
+                user=user_msg,
+                temperature=0.0,
+                max_tokens=200,
+                extra_body={"thinking": {"type": "disabled"}},
+            )
+        except Exception as exc:
+            print(f"  [Analyzer] ⚠️ Phase 2 LLM 调用失败: {exc}", flush=True)
+            return None
+
+        parsed = self._parse_markdown(response)
+        required = ["key_insight", "approach"]
+        if "error" in parsed or not all(f in parsed for f in required):
+            print(f"  [Analyzer] ⚠️ Phase 2 解析失败，跳过 hint", flush=True)
+            return None
+
+        return {
+            "key_insight": parsed.get("key_insight", ""),
+            "approach": parsed.get("approach", ""),
+            "common_pitfall": parsed.get("common_pitfall", ""),
+        }
 
     # ------------------------------------------------------------------ #
     # 成功路径

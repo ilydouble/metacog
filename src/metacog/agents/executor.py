@@ -18,6 +18,40 @@ from minisweagent.agents.default import DefaultAgent
 from minisweagent.environments.local import LocalEnvironment
 from minisweagent.models.litellm_model import LitellmModel
 
+
+class VerboseAgent(DefaultAgent):
+    """实时打印每一步模型输出和执行结果，方便调试。"""
+
+    def query(self) -> dict:
+        print(f"\n=== Step {self.n_calls + 1} · 正在调用模型... ===", flush=True)
+        message = super().query()
+        content = message.get("content", "") or ""
+        tool_calls = message.get("tool_calls") or message.get("extra", {}).get("actions", [])
+        if content:
+            preview = content[:800] if len(content) <= 800 else content[:800] + "\n...(截断)"
+            print("--- 模型回复 ---")
+            print(preview)
+            print("--- 回复结束 ---", flush=True)
+        elif tool_calls:
+            # content 为空但有 tool_calls 是正常行为（Qwen3 关闭 thinking 后直接输出 tool call）
+            print(f"[纯 tool call，无文字说明（正常）]", flush=True)
+        else:
+            print("!!! 模型回复为空且无 tool call，可能是网络错误或模型未响应 !!!", flush=True)
+        return message
+
+    def execute_actions(self, message: dict) -> list[dict]:
+        actions = message.get("extra", {}).get("actions", [])
+        for action in actions:
+            cmd = action.get("command", "")
+            print(f">>> 执行命令: {cmd[:300]}", flush=True)
+        observations = super().execute_actions(message)
+        for obs in observations:
+            output = obs.get("extra", {}).get("raw_output", "") or obs.get("content", "")
+            if output:
+                preview = output[:400] if len(output) <= 400 else output[:400] + "\n...(截断)"
+                print(f"<<< 执行结果:\n{preview}", flush=True)
+        return observations
+
 from ..bus import Event, EventBus, EventType
 from ..memory.memu_client import MemUClient
 from ..memory.store import MemoryStore
@@ -94,17 +128,23 @@ class ExecutorAgent(BaseAgent):
                     top_k=self.rag_top_k  # 只取最相关的 K 条（默认 2）
                 )
 
+                # 阈值过滤：distance > 0.75（相似度 < 25%）的记忆不注入
+                # 语义记忆 query（题目原文）与 document（Problem type + Error + Fix）
+                # 类型相近但仍有差异，故阈值比情景记忆（0.6）宽松
+                retrieved_memories = [m for m in retrieved_memories if m.distance <= 0.75]
+
                 if retrieved_memories:
                     # 组装极度精简的记忆注入
                     memory_injection = "\n## 📚 历史避坑指南\n在处理类似问题时，你曾经犯过错，请务必遵守以下教训：\n\n"
                     for idx, mem in enumerate(retrieved_memories, 1):
-                        # mem.content 就是 "错误原因：...\\n解决策略：..."
                         memory_injection += f"{idx}. {mem.content}\n"
-                        used_memory_ids.append(("semantic", mem.id))  # 记录使用的记忆
+                        used_memory_ids.append(("semantic", mem.id))
 
                     system_template = system_template.rstrip() + "\n\n" + memory_injection
 
                     print(f"  [Executor] 注入 {len(retrieved_memories)} 条相关记忆 (距离: {[f'{m.distance:.3f}' for m in retrieved_memories]})", flush=True)
+                else:
+                    print(f"  [Executor] 语义记忆：无足够相关的记忆（阈值 distance≤0.75），跳过注入", flush=True)
             except Exception as exc:
                 print(f"  [Executor] memU 检索失败: {exc}", flush=True)
 
@@ -140,8 +180,8 @@ class ExecutorAgent(BaseAgent):
                     top_k=self.case_top_k  # 只取最相似的 K 个案例（默认 1）
                 )
 
-                # 相似度阈值过滤：distance > 0.4（相似度 < 60%）的案例不注入，避免不相关干扰
-                similar_cases = [c for c in similar_cases if c.distance <= 0.4]
+                # 相似度阈值过滤：distance > 0.6（相似度 < 40%）的案例不注入，避免不相关干扰
+                similar_cases = [c for c in similar_cases if c.distance <= 0.6]
 
                 if similar_cases:
                     case_text = self.episodic_memory.format_cases_for_prompt(
@@ -149,11 +189,11 @@ class ExecutorAgent(BaseAgent):
                         max_cases=self.case_top_k
                     )
                     system_template = system_template.rstrip() + "\n\n" + case_text
-                    print(f"  [Executor] 注入 {len(similar_cases)} 个类似成功案例 (情景记忆, 相似度≥60%)", flush=True)
+                    print(f"  [Executor] 注入 {len(similar_cases)} 个类似成功案例 (情景记忆, 相似度≥40%)", flush=True)
                     for case in similar_cases:
                         used_memory_ids.append(("episodic", case.id))
                 else:
-                    print(f"  [Executor] 情景记忆：无足够相似的案例（阈值 60%），跳过注入", flush=True)
+                    print(f"  [Executor] 情景记忆：无足够相似的案例（阈值 40%），跳过注入", flush=True)
             except Exception as exc:
                 print(f"  [Executor] 情景记忆检索失败: {exc}", flush=True)
 
@@ -170,7 +210,7 @@ class ExecutorAgent(BaseAgent):
         local_env = LocalEnvironment(env=env_extra) if env_extra else LocalEnvironment()
         step_limit = self.scaffold.get("step_limit", 10)
 
-        agent = DefaultAgent(
+        agent = VerboseAgent(
             model=self.model,
             env=local_env,
             system_template=system_template,

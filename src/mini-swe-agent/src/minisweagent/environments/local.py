@@ -53,17 +53,28 @@ class LocalEnvironment:
         return output
 
     def _check_finished(self, output: dict):
-        """Raises Submitted if the output indicates task completion."""
-        lines = output.get("output", "").lstrip().splitlines(keepends=True)
-        if lines and lines[0].strip() == "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" and output["returncode"] == 0:
-            submission = "".join(lines[1:])
-            raise Submitted(
-                {
-                    "role": "exit",
-                    "content": submission,
-                    "extra": {"exit_status": "Submitted", "submission": submission},
-                }
-            )
+        """Raises Submitted if the output indicates task completion.
+
+        Scans all output lines for the COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT signal,
+        not just the first line, so the model can print intermediate results before submitting.
+        """
+        if output.get("returncode") != 0:
+            return
+        lines = output.get("output", "").splitlines()
+        for i, line in enumerate(lines):
+            if line.strip() == "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT":
+                submission = "\n".join(lines[i + 1:]).strip()
+                if not submission:
+                    # 空提交说明答案计算失败（如 printf $(python3 ...) 中 python3 崩溃）
+                    # 不接受，让 agent 继续尝试
+                    continue
+                raise Submitted(
+                    {
+                        "role": "exit",
+                        "content": submission,
+                        "extra": {"exit_status": "Submitted", "submission": submission},
+                    }
+                )
 
     def get_template_vars(self, **kwargs) -> dict[str, Any]:
         return recursive_merge(self.config.model_dump(), platform.uname()._asdict(), os.environ, kwargs)

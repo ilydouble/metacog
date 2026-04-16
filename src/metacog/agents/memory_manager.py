@@ -73,9 +73,11 @@ class MemoryManagerAgent(BaseAgent):
         if not problem_tags:
             problem_tags = ["general"]
 
+        problem_type = analysis.get("problem_type", "")
         error_symptom = analysis.get("error_symptom", "")
         root_cause = analysis.get("root_cause", "")
         actionable_advice = analysis.get("actionable_advice", "")
+        solution_hint: dict = analysis.get("solution_hint") or {}
 
         if not root_cause or not actionable_advice:
             print(f"  [MemoryManager] 警告: 缺少核心内容，跳过存储", flush=True)
@@ -84,8 +86,29 @@ class MemoryManagerAgent(BaseAgent):
         # ========================================
         # 核心改造：构造 memU 文档
         # ========================================
-        # 1. 拼接向量化内容（核心教训）
-        document_content = f"错误原因：{root_cause}\n解决策略：{actionable_advice}"
+        # 1. 拼接向量化内容
+        # Problem_Type 放最前面作为 embedding 锚点，与 query（题目原文）共享数学词汇，
+        # 使得余弦相似度能真正反映题型相关性，而非被中文分析文字主导。
+        if problem_type:
+            document_content = (
+                f"Problem type: {problem_type}\n"
+                f"Error: {root_cause}\n"
+                f"Fix: {actionable_advice}"
+            )
+        else:
+            document_content = f"错误原因：{root_cause}\n解决策略：{actionable_advice}"
+
+        if solution_hint:
+            key_insight = solution_hint.get("key_insight", "")
+            approach = solution_hint.get("approach", "")
+            common_pitfall = solution_hint.get("common_pitfall", "")
+            hint_text = f"\n解题思路：{key_insight}"
+            if approach:
+                hint_text += f"\n解题步骤：{approach}"
+            if common_pitfall:
+                hint_text += f"\n常见陷阱：{common_pitfall}"
+            document_content += hint_text
+            print(f"  [MemoryManager] ✓ 附加解题思路 hint", flush=True)
 
         # 2. 构造元数据（用于过滤和混合检索）
         metadata = {

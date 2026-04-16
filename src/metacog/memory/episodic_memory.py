@@ -62,6 +62,7 @@ class EpisodicMemory:
         key_insight: str,
         tags: list[str],
         answer: str,
+        problem_type: str = "",
     ) -> str:
         """添加一个成功案例到情景记忆
         
@@ -86,20 +87,31 @@ class EpisodicMemory:
             向量库中的 ID
         """
         # 拼接向量化内容
+        # 以抽象问题类型为核心，避免被题目里具体数字/符号主导
         steps_text = "\n".join(f"{i+1}. {step}" for i, step in enumerate(solution_steps))
-        content = f"""题目：{problem_text[:200]}
+        tags_text = ", ".join(tags)
+        if problem_type:
+            # 建议一：用抽象类型 + 洞察 + 标签作为 embedding，泛化性更强
+            content = (
+                f"Problem type: {problem_type}\n"
+                f"Key insight: {key_insight}\n"
+                f"Tags: {tags_text}\n"
+                f"Approach:\n{steps_text}"
+            )
+        else:
+            # fallback：沿用旧格式（GLM 没有生成 problem_type 时）
+            content = (
+                f"题目：{problem_text[:200]}\n\n"
+                f"关键推理步骤：\n{steps_text}\n\n"
+                f"核心洞察：{key_insight}\n\n"
+                f"答案：{answer}"
+            )
 
-关键推理步骤：
-{steps_text}
-
-核心洞察：{key_insight}
-
-答案：{answer}"""
-        
-        # 构造元数据
+        # 构造元数据（完整信息保留在 metadata，不影响 embedding）
         metadata = {
             "problem_id": problem_id,
-            "problem_text": problem_text[:500],  # 限制长度
+            "problem_text": problem_text[:500],
+            "problem_type": problem_type,
             "key_insight": key_insight,
             "tags": tags,
             "answer": answer,
