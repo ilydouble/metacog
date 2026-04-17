@@ -275,12 +275,30 @@ class AnalyzerAgent(BaseAgent):
             except Exception as exc:
                 print(f"  [Analyzer] ⚠️ 解题思路生成失败: {exc}", flush=True)
 
-        if "error" in analysis or analysis.get("skip"):
+        # ========================================
+        # 🔥 Phase 1 和 Phase 2 解耦处理
+        # ========================================
+        # 即使 Phase 1（错误分析）失败，Phase 2（解题思路）仍然有价值，
+        # 应该发布事件让 MemoryManager 存储解题思路，供后续参考
+        phase1_failed = "error" in analysis or analysis.get("skip")
+        phase2_available = hint_result is not None
+
+        if phase1_failed and not phase2_available:
+            # 两个阶段都失败，直接返回
+            print(f"  [Analyzer] ⚠️  Phase 1 和 Phase 2 都失败，跳过存储", flush=True)
             return
 
-        # 将 Phase 2 的解题思路合并进 analysis
-        if hint_result:
-            analysis["solution_hint"] = hint_result
+        if phase1_failed:
+            # Phase 1 失败但 Phase 2 成功：只保留解题思路
+            print(f"  [Analyzer] ⚠️  Phase 1 失败，但 Phase 2 成功，仅存储解题思路", flush=True)
+            analysis = {
+                "skip_error_analysis": True,  # 标记跳过错误分析
+                "solution_hint": hint_result,
+            }
+        else:
+            # Phase 1 成功：正常合并 Phase 2
+            if phase2_available:
+                analysis["solution_hint"] = hint_result
 
         # ========================================
         # 🔥 PoT 增强：对数学计算错误进行程序验证

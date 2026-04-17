@@ -61,11 +61,53 @@ class MemoryManagerAgent(BaseAgent):
         problem_id = event.data.get("problem_id", "unknown")
         problem_text = event.data.get("problem_text", "")
 
-        # 跳过无效分析
+        # 跳过完全无效的分析
         if "error" in analysis or analysis.get("skip"):
             return
 
-        # 提取结构化字段（Markdown 键值对，key 全小写）
+        # ========================================
+        # 🔥 支持"只有解题思路，没有错误分析"的情况
+        # ========================================
+        skip_error_analysis = analysis.get("skip_error_analysis", False)
+        solution_hint: dict = analysis.get("solution_hint") or {}
+
+        if skip_error_analysis:
+            # Phase 1 失败，但 Phase 2 成功
+            if not solution_hint:
+                print(f"  [MemoryManager] ⚠️  Phase 1 失败且无解题思路，跳过存储", flush=True)
+                return
+
+            print(f"  [MemoryManager] ℹ️  仅存储解题思路（Phase 1 失败）", flush=True)
+
+            # 构造一个"仅包含解题思路"的特殊记忆条目
+            key_insight = solution_hint.get("key_insight", "")
+            approach = solution_hint.get("approach", "")
+            common_pitfall = solution_hint.get("common_pitfall", "")
+
+            document_content = f"Problem type: (analysis failed, hint only)\n"
+            if key_insight:
+                document_content += f"Correct approach: {key_insight}\n"
+            if approach:
+                document_content += f"Key steps: {approach}\n"
+            if common_pitfall:
+                document_content += f"Common pitfall: {common_pitfall}\n"
+
+            metadata = {
+                "tags": ["hint_only"],  # 特殊标记
+                "symptom": "phase1_failed",
+                "problem_id": problem_id,
+                "source_problem": problem_text[:200],
+            }
+
+            # 存入语义记忆（作为"参考解法"而非"错误教训"）
+            mem_id = self.memu.add_memory(
+                content=document_content.strip(),
+                metadata=metadata
+            )
+            print(f"  [MemoryManager] ✓ 写入 memU (hint-only): {mem_id} | tags={metadata['tags']}", flush=True)
+            return
+
+        # 正常流程：提取结构化字段
         raw_tags = analysis.get("problem_tags", "")
         problem_tags = [t.strip() for t in raw_tags.split(",") if t.strip()] if isinstance(raw_tags, str) else raw_tags
 
@@ -77,7 +119,6 @@ class MemoryManagerAgent(BaseAgent):
         error_symptom = analysis.get("error_symptom", "")
         root_cause = analysis.get("root_cause", "")
         actionable_advice = analysis.get("actionable_advice", "")
-        solution_hint: dict = analysis.get("solution_hint") or {}
 
         if not root_cause or not actionable_advice:
             print(f"  [MemoryManager] 警告: 缺少核心内容，跳过存储", flush=True)
@@ -98,6 +139,8 @@ class MemoryManagerAgent(BaseAgent):
         else:
             document_content = f"错误原因：{root_cause}\n解决策略：{actionable_advice}"
 
+        # 重新获取 solution_hint（之前已经在前面声明了，这里需要更新）
+        solution_hint = analysis.get("solution_hint") or {}
         if solution_hint:
             key_insight = solution_hint.get("key_insight", "")
             approach = solution_hint.get("approach", "")
