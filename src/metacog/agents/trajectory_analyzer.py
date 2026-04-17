@@ -1,10 +1,10 @@
-"""TrajectoryAnalyzer - 轨迹后验分析器
+"""TrajectoryAnalyzer - Post-hoc trajectory analyzer
 
-事后分析轨迹，识别死循环和无效重复模式。
-虽然不能实时阻止（那需要修改 mini-swe-agent 内部），但可以：
-1. 在 AnalyzerAgent 中标记这些模式
-2. 将"避免死循环"的教训存入 memU
-3. 下次遇到类似情况时提前警告
+Analyzes completed trajectories to identify dead loops and ineffective repetition patterns.
+While it cannot prevent them in real-time (which would require modifying mini-swe-agent internals), it can:
+1. Mark these patterns in AnalyzerAgent
+2. Store "avoid dead loops" lessons in memU
+3. Provide early warnings when similar situations are encountered next time
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from typing import Optional
 
 @dataclass
 class LoopPattern:
-    """检测到的循环模式"""
+    """Detected loop pattern"""
     start_step: int
     end_step: int
     loop_count: int
@@ -27,9 +27,9 @@ class LoopPattern:
 
 
 class TrajectoryAnalyzer:
-    """轨迹后验分析器
-    
-    分析已完成的轨迹，识别死循环和反模式
+    """Post-hoc trajectory analyzer
+
+    Analyzes completed trajectories to identify dead loops and anti-patterns
     """
     
     def __init__(self) -> None:
@@ -39,33 +39,33 @@ class TrajectoryAnalyzer:
         self,
         steps: list
     ) -> Optional[LoopPattern]:
-        """分析轨迹中的死循环模式
+        """Analyze dead loop patterns in the trajectory
 
-        参数
-        ----
+        Parameters
+        ----------
         steps : list
-            轨迹步骤列表，可能是 dict 或 _Step 对象
+            List of trajectory steps, can be dict or _Step objects
 
-        返回
-        ----
+        Returns
+        -------
         LoopPattern | None
-            如果检测到明显的循环，返回模式描述
+            If an obvious loop is detected, returns the pattern description
         """
         if len(steps) < 3:
-            return None  # 至少需要 3 步才能检测连续重复
+            return None  # Need at least 3 steps to detect consecutive repeats
 
-        # 计算每步的签名（command + output 的哈希）
+        # Compute signature for each step (hash of command + output)
         signatures = []
         for step in steps:
             sig = self._compute_step_signature(step)
             signatures.append(sig)
 
-        # 检测连续重复
+        # Detect consecutive repeats
         consecutive_repeats = self._find_consecutive_repeats(signatures)
         if consecutive_repeats:
             return consecutive_repeats
 
-        # 检测交替模式（A-B-A-B-A-B）
+        # Detect alternating patterns (A-B-A-B-A-B)
         alternating_pattern = self._find_alternating_pattern(signatures, steps)
         if alternating_pattern:
             return alternating_pattern
@@ -77,17 +77,17 @@ class TrajectoryAnalyzer:
         steps: list,
         step_limit: int
     ) -> Optional[str]:
-        """检测低效的解题方法
+        """Detect inefficient solution approaches
 
-        判断标准：检测 Python 代码内容本身是否重复
-        - 提取每步实际执行的 Python 代码
-        - 归一化（去注释、去数字、去空白）后计算哈希
-        - 若 60% 以上的代码块哈希相同 → 逻辑高度重复，没有实质改进
+        Criteria: Detect repetition in Python code content itself
+        - Extract actual Python code executed in each step
+        - Normalize (remove comments, numbers, whitespace) and compute hash
+        - If >60% of code blocks have the same hash → logic is highly repetitive, no substantive improvement
         """
         if len(steps) < step_limit * 0.7:
-            return None  # 步数不够多，不判断
+            return None  # Not enough steps to judge
 
-        # 提取每步的 Python 代码签名
+        # Extract Python code signature from each step
         code_sigs = []
         for step in steps:
             cmd = getattr(step, 'command', '') if hasattr(step, 'command') else step.get('command', '')
@@ -97,42 +97,42 @@ class TrajectoryAnalyzer:
                 code_sigs.append(sig)
 
         if len(code_sigs) < 3:
-            return None  # 代码块太少，无法判断
+            return None  # Too few code blocks to judge
 
-        # 检查最常见的代码签名占比
+        # Check proportion of most common code signature
         counts = Counter(code_sigs)
         most_common_sig, most_common_count = counts.most_common(1)[0]
 
         if most_common_count / len(code_sigs) > 0.6:
-            return (f"低效方法：{most_common_count}/{len(code_sigs)} 个代码块"
-                    f"结构高度相似（归一化后相同），未实质性改进解题逻辑")
+            return (f"Inefficient approach: {most_common_count}/{len(code_sigs)} code blocks "
+                    f"are highly similar (identical after normalization), no substantive improvement in solution logic")
 
         return None
-    
+
     # ------------------------------------------------------------------ #
-    # 内部工具方法
+    # Internal utility methods
     # ------------------------------------------------------------------ #
     
     def _compute_step_signature(self, step) -> str:
-        """计算步骤签名（用于检测重复）
+        """Compute step signature (for detecting repetition)
 
-        参数可以是：
+        Parameter can be:
         - dict: {'action': ..., 'observation': ...}
         - _Step: dataclass with .command and .output
         """
-        # 兼容处理不同的步骤格式
-        if hasattr(step, 'command'):  # _Step 对象
+        # Handle different step formats
+        if hasattr(step, 'command'):  # _Step object
             command = getattr(step, 'command', '').strip().lower()
             output = getattr(step, 'output', '')[:200].strip().lower()
-        elif isinstance(step, dict):  # 字典
+        elif isinstance(step, dict):  # Dictionary
             command = step.get("action", step.get("command", "")).strip().lower()
             output = step.get("observation", step.get("output", ""))[:200].strip().lower()
         else:
-            # 其他类型，尝试转字符串
+            # Other types, try converting to string
             command = str(step).lower()
             output = ""
 
-        # 简化：去除数字、空格
+        # Simplify: remove numbers, spaces
         import re
         command = re.sub(r'\d+', 'N', command)
         output = re.sub(r'\d+', 'N', output)
@@ -144,87 +144,87 @@ class TrajectoryAnalyzer:
         self,
         signatures: list[str]
     ) -> Optional[LoopPattern]:
-        """查找连续重复的模式"""
+        """Find consecutive repetition patterns"""
         if len(signatures) < 3:
             return None
-        
-        # 检查最近 3-5 步是否重复
+
+        # Check if the most recent 3-5 steps are repeated
         for window_size in [3, 4, 5]:
             if len(signatures) < window_size:
                 continue
-            
+
             recent = signatures[-window_size:]
-            if len(set(recent)) == 1:  # 全部相同
+            if len(set(recent)) == 1:  # All the same
                 return LoopPattern(
                     start_step=len(signatures) - window_size + 1,
                     end_step=len(signatures),
                     loop_count=window_size,
                     action_signature=recent[0],
-                    description=f"连续 {window_size} 步执行相同操作"
+                    description=f"Consecutive {window_size} steps executing the same action"
                 )
-        
+
         return None
-    
+
     def _find_alternating_pattern(
         self,
         signatures: list[str],
         steps: list[dict]
     ) -> Optional[LoopPattern]:
-        """查找交替模式（A-B-A-B-A-B）"""
+        """Find alternating patterns (A-B-A-B-A-B)"""
         if len(signatures) < 4:
             return None
-        
-        # 检查最近 4-6 步是否呈现 A-B 交替
+
+        # Check if the most recent 4-6 steps show A-B alternation
         recent_sigs = signatures[-6:]
-        
+
         if len(recent_sigs) >= 4:
-            # 检查是否是 A-B-A-B 模式
-            if (len(set(recent_sigs[::2])) == 1 and  # 偶数位相同
-                len(set(recent_sigs[1::2])) == 1 and  # 奇数位相同
-                recent_sigs[0] != recent_sigs[1]):    # 两者不同
-                
+            # Check for A-B-A-B pattern
+            if (len(set(recent_sigs[::2])) == 1 and  # Even positions same
+                len(set(recent_sigs[1::2])) == 1 and  # Odd positions same
+                recent_sigs[0] != recent_sigs[1]):    # Both different
+
                 return LoopPattern(
                     start_step=len(signatures) - len(recent_sigs) + 1,
                     end_step=len(signatures),
                     loop_count=len(recent_sigs) // 2,
                     action_signature=f"{recent_sigs[0]}<->{recent_sigs[1]}",
-                    description=f"检测到 A-B 交替模式，重复 {len(recent_sigs)//2} 次"
+                    description=f"Detected A-B alternating pattern, repeated {len(recent_sigs)//2} times"
                 )
-        
+
         return None
     
     def _extract_python_code(self, cmd: str) -> str:
-        """从 shell 命令中提取实际的 Python 代码内容
+        """Extract actual Python code content from shell command
 
-        兼容两种格式：
-        1. heredoc: python3 << 'EOF'\n...code...\nEOF（有或无结束符）
+        Supports two formats:
+        1. heredoc: python3 << 'EOF'\n...code...\nEOF (with or without end marker)
         2. python3 -c '...'
         """
-        # heredoc 格式（有无 EOF 结尾都兼容）
+        # heredoc format (compatible with or without EOF ending)
         m = re.search(
             r"python3\s*<<\s*['\"]?EOF['\"]?\s*\n(.*?)(?:\nEOF\s*$|\Z)",
             cmd, re.DOTALL
         )
         if m:
             return m.group(1).strip()
-        # python3 -c 格式
+        # python3 -c format
         m = re.search(r"python3\s+-c\s+['\"](.+?)['\"]", cmd, re.DOTALL)
         if m:
             return m.group(1).strip()
         return ""
 
     def _normalize_code_signature(self, code: str) -> str:
-        """归一化 Python 代码并计算哈希，用于判断逻辑是否重复
+        """Normalize Python code and compute hash, to judge if logic is repetitive
 
-        归一化规则：
-        1. 去掉注释（# 行）
-        2. 把所有数字替换为 N（不同参数视为同一逻辑）
-        3. 把字符串字面量替换为 STR
-        4. 合并连续空白
-        5. 转小写后取 MD5 前 8 位
+        Normalization rules:
+        1. Remove comments (# lines)
+        2. Replace all numbers with N (different parameters considered same logic)
+        3. Replace string literals with STR
+        4. Merge consecutive whitespace
+        5. Convert to lowercase and take first 8 chars of MD5
         """
-        code = re.sub(r'#.*', '', code)                     # 去注释
-        code = re.sub(r'["\'].*?["\']', 'STR', code)       # 去字符串
-        code = re.sub(r'\b\d+\.?\d*\b', 'N', code)         # 数字 → N
-        code = re.sub(r'\s+', ' ', code).strip().lower()    # 压缩空白 + 小写
+        code = re.sub(r'#.*', '', code)                     # Remove comments
+        code = re.sub(r'["\'].*?["\']', 'STR', code)       # Remove strings
+        code = re.sub(r'\b\d+\.?\d*\b', 'N', code)         # Numbers → N
+        code = re.sub(r'\s+', ' ', code).strip().lower()    # Compress whitespace + lowercase
         return hashlib.md5(code.encode()).hexdigest()[:8]

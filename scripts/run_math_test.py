@@ -319,11 +319,17 @@ def run_single_problem(
                 raw = msg.get("extra", {}).get("raw_output", "") or msg.get("content", "") or ""
                 lines = raw.splitlines()
                 for i, line in enumerate(lines):
-                    if line.strip() == "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT" and i + 1 < len(lines):
-                        candidate = normalize_answer(lines[i + 1].strip())
-                        if candidate:
-                            extracted_answer = candidate
-                            print(f"[DEBUG] 从 bash 输出中找到提交答案: {extracted_answer}")
+                    if line.strip() == "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT":
+                        # 往下找第一个包含数字的非空行
+                        for j in range(i + 1, len(lines)):
+                            candidate_line = lines[j].strip()
+                            if candidate_line:
+                                candidate = normalize_answer(candidate_line)
+                                if candidate and any(c.isdigit() for c in candidate):
+                                    extracted_answer = candidate
+                                    print(f"[DEBUG] 从 bash 输出中找到提交答案: {extracted_answer}")
+                                    break
+                        if extracted_answer:
                             break
                 if extracted_answer:
                     break

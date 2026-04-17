@@ -63,18 +63,23 @@ class LocalEnvironment:
         lines = output.get("output", "").splitlines()
         for i, line in enumerate(lines):
             if line.strip() == "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT":
+                # 不只是合并后面的所有行，我们希望确保后面真的有"有意义的输出"（数字）
                 submission = "\n".join(lines[i + 1:]).strip()
                 if not submission:
-                    # 空提交说明答案计算失败（如 printf $(python3 ...) 中 python3 崩溃）
-                    # 不接受，让 agent 继续尝试
                     continue
-                raise Submitted(
-                    {
-                        "role": "exit",
-                        "content": submission,
-                        "extra": {"exit_status": "Submitted", "submission": submission},
-                    }
-                )
+                # 如果 submission 中包含数字，就认定它提交了，防止提交标点符号或纯字符串如 "]"
+                # 增加了对 "ANSWER" 的特殊处理
+                if any(c.isdigit() for c in submission) or "ANSWER" in submission:
+                    raise Submitted(
+                        {
+                            "role": "exit",
+                            "content": submission,
+                            "extra": {"exit_status": "Submitted", "submission": submission},
+                        }
+                    )
+                else:
+                    # 空提交说明答案计算失败，不接受，让 agent 继续尝试
+                    continue
 
     def get_template_vars(self, **kwargs) -> dict[str, Any]:
         return recursive_merge(self.config.model_dump(), platform.uname()._asdict(), os.environ, kwargs)

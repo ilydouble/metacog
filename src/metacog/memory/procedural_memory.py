@@ -174,26 +174,26 @@ class ProceduralMemory:
         if not skills:
             return ""
         
-        lines = ["## 🛠️ 可用技能（根据当前题目检索）\n"]
-        
+        lines = ["## 🛠️ Available Skills (Retrieved for Current Problem)\n"]
+
         for skill in skills:
             meta = skill.metadata
             name = meta.get("name", "unknown")
             desc = meta.get("description", "")
             when = meta.get("when_to_use", "")
             tags = meta.get("tags", [])
-            
+
             lines.append(f"### {name}")
-            lines.append(f"**描述**: {desc}")
-            lines.append(f"**使用场景**: {when}")
-            lines.append(f"**标签**: {', '.join(tags)}")
-            
+            lines.append(f"**Description**: {desc}")
+            lines.append(f"**When to use**: {when}")
+            lines.append(f"**Tags**: {', '.join(tags)}")
+
             if include_code:
                 file_path = meta.get("file_path", "")
                 if file_path and Path(file_path).exists():
                     try:
                         code = Path(file_path).read_text()
-                        lines.append(f"**代码**:\n```python\n{code}\n```")
+                        lines.append(f"**Code**:\n```python\n{code}\n```")
                     except Exception:
                         pass
             

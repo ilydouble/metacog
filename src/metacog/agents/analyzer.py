@@ -1,15 +1,15 @@
-"""AnalyzerAgent - 订阅 TrajectoryEvent，分段分析轨迹，蒸馏成精简记忆条目。
+"""AnalyzerAgent - Subscribes to TrajectoryEvent, analyzes trajectory in segments, distills into concise memory entries.
 
-设计原则
---------
-- 上下文受限：每次 LLM 调用只喂一小块（chunk），不把整条轨迹塞进去。
-- 高度精简：每块只产出一句话摘要；最终蒸馏只产出 1-2 句可执行建议。
-- **Program-of-Thoughts (PoT)**: 对数学错误生成验证代码，提取可复用逻辑
-- 分段流程：
-    轨迹文件 → parse_steps → 按 chunk_size 分块
-    → 每块调 LLM 得一句摘要
-    → 所有摘要 + 题目元数据 → 调 LLM 蒸馏 → AnalysisEvent
-    → (可选) PoT 验证 → 生成代码 → 执行 → 提取可复用模式
+Design Principles
+-----------------
+- Context-limited: Each LLM call is fed only a small chunk, not the entire trajectory.
+- Highly concise: Each chunk produces one-sentence summary; final distillation produces 1-2 actionable suggestions.
+- **Program-of-Thoughts (PoT)**: Generate verification code for math errors, extract reusable logic
+- Segmented workflow:
+    Trajectory file → parse_steps → split by chunk_size
+    → Each chunk calls LLM to get one-sentence summary
+    → All summaries + problem metadata → call LLM to distill → AnalysisEvent
+    → (Optional) PoT verification → generate code → execute → extract reusable patterns
 """
 
 from __future__ import annotations
@@ -29,16 +29,16 @@ from .pot_reflector import PoTReflector
 from .trajectory_analyzer import TrajectoryAnalyzer
 
 # ------------------------------------------------------------------ #
-# 每步截断长度（字符数）
+# Truncation length for each step (characters)
 # ------------------------------------------------------------------ #
-_THOUGHT_LIMIT = 300   # assistant 思考内容
-_CMD_LIMIT     = 400   # bash 命令
-_OUTPUT_LIMIT  = 400   # 执行输出
+_THOUGHT_LIMIT = 300   # assistant thought content
+_CMD_LIMIT     = 400   # bash command
+_OUTPUT_LIMIT  = 400   # execution output
 
 
 @dataclass
 class _Step:
-    """轨迹中的一个 (思考, 命令, 输出) 三元组。"""
+    """A (thought, command, output) triple in the trajectory."""
     thought: str
     command: str
     output: str
@@ -55,7 +55,7 @@ class _Step:
 
 
 # ------------------------------------------------------------------ #
-# Prompt 模板
+# Prompt Templates
 # ------------------------------------------------------------------ #
 _CHUNK_SYSTEM = """\
 You are reviewing a segment of an AI math-solving trajectory.
@@ -63,26 +63,33 @@ Summarize what the agent tried and what happened in ONE sentence (max 25 words).
 Be factual. No advice yet."""
 
 _DISTILL_SYSTEM = """\
-You are a math tutor analyzing student errors. Extract a reusable lesson.
+# Role
+You are an AI Core Evaluator specializing in "Meta-cognitive Distillation of Failures". Your task is to analyze an agent's failed execution trajectory and distill it EXCLUSIVELY into abstract, structured Semantic Memory (Historical Lessons). You act as the "Teacher Model" to extract universal rules and cognitive traps.
 
-OUTPUT FORMAT (MANDATORY - your ENTIRE response must be ONLY this):
+# Objective 1: The Filtering Gate
+- IGNORE trivial errors: Pure syntax errors, API timeouts, or unhandled formatting exceptions without logical exploration should be discarded. Output: {"status": "discard"}
+- CAPTURE cognitive errors: Strategic failures, mathematical traps, or intractable routing (e.g., naive numerical brute-force on exact algebraic systems).
 
-[Problem_Type]: abstract 1-sentence description of the mathematical structure (focus on technique/domain, NOT specific numbers)
-[Problem_Tags]: tag1, tag2
-[Error_Symptom]: what went wrong
-[Root_Cause]: why it happened
-[Actionable_Advice]: how to fix it
-[Needs_Code_Verification]: true
+# Objective 2: Absolute De-parameterization
+Replace all specific numerical values (e.g., 38, 14, 196) and precise coordinates with generic mathematical variables (e.g., Length L, Polygon P).
 
-EXAMPLE:
-[Problem_Type]: modular arithmetic on products of consecutive integers requiring step-wise reduction
-[Problem_Tags]: number_theory, modular_arithmetic
-[Error_Symptom]: forgot modular reduction after multiplication
-[Root_Cause]: missed the requirement to apply mod at each step
-[Actionable_Advice]: always apply % m after each arithmetic operation in modular context
-[Needs_Code_Verification]: true
+# Output Format (JSON)
+If it is a cognitive failure, output a standard JSON block inside ```json tags. The keys MUST exactly match the schema below. ALL generated content MUST be entirely in English.
 
-Do NOT include any explanation. Output ONLY the six lines above."""
+```json
+{
+  "problem_type": "<Abstract mathematical or algorithmic description of the problem category>",
+  "error": "<Diagnose the root strategic or algorithmic failure (e.g., 'Over-reliance on coordinate brute-force')>",
+  "fix": "<The imperative 'Teacher' instruction on what to do instead. Must be highly actionable>",
+  "reasoning_path": "<Abstract reasoning pathway for the correct approach>",
+  "solution_steps": "<Provide 3 abstract steps for the correct approach, e.g., '1. Identify shape 2. Apply theorem 3. Solve system'>",
+  "common_traps": "<Document the deceptive algorithmic 'trap' the agent fell into, serving as a warning>"
+}
+```
+
+# Execution Constraints
+- Do NOT leak the specific final answer into the output.
+- Focus strictly on strategy and routing, not basic arithmetic mistakes."""
 
 _SUCCESS_CHUNK_SYSTEM = """\
 You are reviewing a segment of a SUCCESSFUL AI math-solving trajectory.
@@ -122,7 +129,7 @@ Full trajectory:
 {trajectory}"""
 
 # ------------------------------------------------------------------ #
-# Phase 2: 解题思路提示（只看题目，不受失败轨迹污染）
+# Phase 2: Solution hint prompt (only looks at problem, not contaminated by failed trajectory)
 # ------------------------------------------------------------------ #
 _HINT_SYSTEM = """\
 You are a math olympiad coach. A student just failed to solve a problem.
@@ -193,7 +200,7 @@ class AnalyzerAgent(BaseAgent):
             return
 
         # ========================================
-        # 🔥 死循环检测（事后分析）
+        # 🔥 Dead loop detection (post-hoc analysis)
         # ========================================
         loop_pattern = None
         inefficient_approach = None
@@ -210,7 +217,7 @@ class AnalyzerAgent(BaseAgent):
                 print(f"  [Analyzer] ⚠️  {inefficient_approach}", flush=True)
 
         # ========================================
-        # 🔥 失败路由（阻断操作性失误入库）
+        # 🔥 Failure routing (block operational mistakes from being stored)
         # ========================================
         from .failure_router import route_failure
         routing = route_failure(
@@ -220,16 +227,17 @@ class AnalyzerAgent(BaseAgent):
             expected_answer=data.get("expected_answer"),
         )
 
-        if not routing.should_store:
-            print(f"  [Router] 🚫 阻断入库: {routing.reason}", flush=True)
-            return
+        # Phase 1 is blocked for operational mistakes, but Phase 2 (hint) always runs
+        # because hint generation only depends on the problem text, not the trajectory
+        skip_phase1 = not routing.should_store
+        if skip_phase1:
+            print(f"  [Router] 🚫 Phase 1 blocked: {routing.reason}", flush=True)
+        else:
+            print(f"  [Router] ✅ Phase 1 allowed: {routing.reason}", flush=True)
 
-        print(f"  [Router] ✅ 允许入库: {routing.reason}", flush=True)
+        print(f"  [Analyzer] Running: distill trajectory (Phase 1) + generate hint (Phase 2)...", flush=True)
 
-        # GLM-4.7 支持 200K 上下文，直接蒸馏完整轨迹，无需分块
-        print(f"  [Analyzer] 失败轨迹 {len(steps)} 步 → 直接蒸馏（无分块）...", flush=True)
-
-        # 构建附加上下文（死循环/低效检测结果）
+        # Build extra context (dead loop / inefficiency detection results)
         extra_context = ""
         if loop_pattern:
             extra_context += f"\n[LOOP DETECTED] {loop_pattern.description}"
@@ -239,114 +247,124 @@ class AnalyzerAgent(BaseAgent):
         problem_text = data.get("problem", "")
 
         # ========================================
-        # 🔥 Phase 1 + Phase 2 并行：错误分析 & 解题思路
+        # 🔥 Phase 1 + Phase 2 parallel: error analysis & solution hint
         # ========================================
-        print(f"  [Analyzer] 并行执行: 蒸馏轨迹（Phase 1）+ 生成解题思路（Phase 2）...", flush=True)
         analysis = {"skip": True, "error": "not_started"}
         hint_result: Optional[dict] = None
 
         with ThreadPoolExecutor(max_workers=2) as pool:
-            future_distill = pool.submit(
-                self._distill,
-                steps=steps,
-                problem=problem_text[:300],
-                expected_answer=data.get("expected_answer", ""),
-                extracted_answer=data.get("extracted_answer") or "(none)",
-                n_steps=data.get("n_steps", 0),
-                extra_context=extra_context,
-            )
+            # Phase 1: only submit if Router allows
+            if not skip_phase1:
+                future_distill = pool.submit(
+                    self._distill,
+                    steps=steps,
+                    problem=problem_text[:300],
+                    expected_answer=data.get("expected_answer", ""),
+                    extracted_answer=data.get("extracted_answer") or "(none)",
+                    n_steps=data.get("n_steps", 0),
+                    extra_context=extra_context,
+                )
+            else:
+                future_distill = None
+
+            # Phase 2: always submit regardless of Router decision
             future_hint = pool.submit(
                 self._generate_hint,
                 problem=problem_text[:500],
             )
 
-            try:
-                analysis = future_distill.result()
-            except Exception as exc:
-                print(f"  [Analyzer] ❌ 蒸馏发生异常: {exc}", flush=True)
-                import traceback
-                traceback.print_exc()
-                analysis = {"skip": True, "error": str(exc)}
+            # Phase 1: only call .result() if it was submitted
+            if future_distill is not None:
+                try:
+                    analysis = future_distill.result()
+                except Exception as exc:
+                    print(f"  [Analyzer] ❌ Distillation exception occurred: {exc}", flush=True)
+                    import traceback
+                    traceback.print_exc()
+                    analysis = {"skip": True, "error": str(exc)}
+            else:
+                # Phase 1 was blocked by Router, mark as skipped
+                analysis = {"skip": True, "error": "blocked_by_router"}
 
             try:
                 hint_result = future_hint.result()
                 if hint_result:
-                    print(f"  [Analyzer] ✅ 解题思路生成完成", flush=True)
+                    print(f"  [Analyzer] ✅ Solution hint generation completed", flush=True)
             except Exception as exc:
-                print(f"  [Analyzer] ⚠️ 解题思路生成失败: {exc}", flush=True)
+                print(f"  [Analyzer] ⚠️ Solution hint generation failed: {exc}", flush=True)
 
         # ========================================
-        # 🔥 Phase 1 和 Phase 2 解耦处理
+        # 🔥 Phase 1 and Phase 2 decoupling
         # ========================================
-        # 即使 Phase 1（错误分析）失败，Phase 2（解题思路）仍然有价值，
-        # 应该发布事件让 MemoryManager 存储解题思路，供后续参考
+        # Even if Phase 1 (error analysis) fails, Phase 2 (solution hint) is still valuable,
+        # should publish event to let MemoryManager store solution hint for future reference
         phase1_failed = "error" in analysis or analysis.get("skip")
         phase2_available = hint_result is not None
 
         if phase1_failed and not phase2_available:
-            # 两个阶段都失败，直接返回
-            print(f"  [Analyzer] ⚠️  Phase 1 和 Phase 2 都失败，跳过存储", flush=True)
+            # Both phases failed, return directly
+            print(f"  [Analyzer] ⚠️  Both Phase 1 and Phase 2 failed, skipping storage", flush=True)
             return
 
         if phase1_failed:
-            # Phase 1 失败但 Phase 2 成功：只保留解题思路
-            print(f"  [Analyzer] ⚠️  Phase 1 失败，但 Phase 2 成功，仅存储解题思路", flush=True)
+            # Phase 1 failed but Phase 2 succeeded: keep only solution hint
+            print(f"  [Analyzer] ⚠️  Phase 1 failed, but Phase 2 succeeded, storing only solution hint", flush=True)
             analysis = {
-                "skip_error_analysis": True,  # 标记跳过错误分析
+                "skip_error_analysis": True,  # Mark skip error analysis
                 "solution_hint": hint_result,
             }
         else:
-            # Phase 1 成功：正常合并 Phase 2
+            # Phase 1 succeeded: merge Phase 2 normally
             if phase2_available:
                 analysis["solution_hint"] = hint_result
 
         # ========================================
-        # 🔥 PoT 增强：对数学计算错误进行程序验证
+        # 🔥 PoT Enhancement: Program verification for math calculation errors
         # ========================================
         needs_verification = str(analysis.get("needs_code_verification", "false")).lower().strip() == "true"
         if self.enable_pot and needs_verification:
-            print(f"  [Analyzer] 🧪 启用 PoT 验证...", flush=True)
+            print(f"  [Analyzer] 🧪 Enabling PoT verification...", flush=True)
             pot_result = self._apply_pot_verification(
                 problem=data.get("problem", ""),
                 steps=steps,
                 analysis=analysis
             )
             if pot_result:
-                # 用代码逻辑增强 actionable_advice
+                # Enhance actionable_advice with code logic
                 analysis["actionable_advice"] = pot_result
-                print(f"  [Analyzer] ✅ PoT 增强完成", flush=True)
+                print(f"  [Analyzer] ✅ PoT enhancement completed", flush=True)
 
-        # 发布 ANALYSIS 事件（包含结构化 JSON 和题目原文）
+        # Publish ANALYSIS event (contains structured JSON and problem text)
         self._publish(Event(
             type=EventType.ANALYSIS,
             data={
                 "problem_id": data.get("id"),
-                "analysis": analysis,  # 结构化 JSON: {problem_tags, error_symptom, root_cause, actionable_advice}
-                "problem_text": data.get("problem", ""),  # 题目原文（供 memU 存储）
+                "analysis": analysis,  # Structured JSON: {problem_tags, error_symptom, root_cause, actionable_advice}
+                "problem_text": data.get("problem", ""),  # Original problem text (for memU storage)
             },
         ))
 
     # ------------------------------------------------------------------ #
-    # 分块策略
+    # Chunking Strategy
     # ------------------------------------------------------------------ #
 
     def _adaptive_chunking(self, steps: list[_Step]) -> list[list[_Step]]:
-        """🔥 自适应分块策略：根据轨迹长度动态调整 chunk_size
+        """🔥 Adaptive chunking strategy: dynamically adjust chunk_size based on trajectory length
 
-        策略：
-        - <= 5 步：不分块（1 次 GLM 调用，直接蒸馏）
-        - 6-10 步：chunk_size=4（2-3 次 GLM 调用）
-        - > 10 步：chunk_size=5（控制在 3-4 次 GLM 调用）
+        Strategy:
+        - <= 5 steps: no chunking (1 GLM call, direct distillation)
+        - 6-10 steps: chunk_size=4 (2-3 GLM calls)
+        - > 10 steps: chunk_size=5 (controlled to 3-4 GLM calls)
 
-        目标：
-        - 短轨迹：节省成本（减少 1-2 次 GLM 调用）
-        - 长轨迹：保持质量（不会过度分块）
+        Goals:
+        - Short trajectories: save cost (reduce 1-2 GLM calls)
+        - Long trajectories: maintain quality (avoid excessive chunking)
         """
         n_steps = len(steps)
 
         if n_steps <= 5:
-            # 短轨迹：不分块，整体蒸馏
-            print(f"    [Chunking] 短轨迹（{n_steps} 步），不分块", flush=True)
+            # Short trajectory: no chunking, distill as whole
+            print(f"    [Chunking] Short trajectory ({n_steps} steps), no chunking", flush=True)
             return [steps]
         elif n_steps <= 10:
             # 中等轨迹：chunk_size=4
@@ -433,7 +451,7 @@ class AnalyzerAgent(BaseAgent):
     # ------------------------------------------------------------------ #
 
     def _summarize_chunk(self, chunk: list[_Step]) -> str:
-        """用一句话摘要一个 chunk。失败时返回空字符串。"""
+        """Summarize a chunk in one sentence. Returns empty string on failure."""
         body = "\n\n".join(f"Step {j+1}:\n{s.render()}"
                            for j, s in enumerate(chunk))
         try:
@@ -455,7 +473,9 @@ class AnalyzerAgent(BaseAgent):
         n_steps: int,
         extra_context: str = "",
     ) -> dict:
-        """把完整轨迹直接蒸馏成结构化记忆（GLM-4.7 大上下文，无需分块）。"""
+        """Distill the full trajectory into structured semantic memory (JSON format)."""
+        import json as _json
+
         trajectory = "\n\n".join(f"Step {i+1}:\n{s.render()}" for i, s in enumerate(steps))
         if extra_context:
             trajectory += extra_context
@@ -470,29 +490,46 @@ class AnalyzerAgent(BaseAgent):
             system=_DISTILL_SYSTEM,
             user=user_msg,
             temperature=0.0,
-            max_tokens=300,
+            max_tokens=600,
             extra_body={"thinking": {"type": "disabled"}},
         )
 
-        print(f"  [Analyzer] LLM 返回长度: {len(response)} 字符", flush=True)
-        print(f"  [Analyzer] LLM 原始响应（前 500 字符）:\n{response[:500]}", flush=True)
+        print(f"  [Analyzer] LLM response length: {len(response)} chars", flush=True)
+        print(f"  [Analyzer] LLM raw response (first 500 chars):\n{response[:500]}", flush=True)
 
-        # 严格 Markdown 解析和验证
-        parsed = self._parse_json(response)
+        # Parse JSON output
+        clean = response.strip()
+        if clean.startswith("```"):
+            clean = re.sub(r"^```[a-z]*\n?", "", clean)
+            clean = re.sub(r"\n?```$", "", clean.strip())
 
-        # 验证必需字段
-        required_fields = ["problem_tags", "error_symptom", "root_cause", "actionable_advice"]
-        if "error" in parsed or not all(f in parsed for f in required_fields):
-            print(f"  [Analyzer] ✗ 解析失败或缺少必需字段", flush=True)
-            print(f"  [Analyzer] 解析结果: {parsed}", flush=True)
-            print(f"  [Analyzer] 缺少的字段: {[f for f in required_fields if f not in parsed]}", flush=True)
+        try:
+            outer = _json.loads(clean)
+        except _json.JSONDecodeError as exc:
+            print(f"  [Analyzer] ✗ JSON parse failed: {exc}", flush=True)
             return {"skip": True, "error": "parse_failed"}
 
-        # 确保 problem_tags 是列表
-        if not isinstance(parsed["problem_tags"], list):
-            parsed["problem_tags"] = [str(parsed["problem_tags"])]
+        # Handle discard signal
+        if outer.get("status") == "discard":
+            print(f"  [Analyzer] ⏭  Discarded by filtering gate", flush=True)
+            return {"skip": True, "error": "trivial_failure_discarded"}
 
-        return parsed
+        # Flat fields — no nesting
+        required_fields = ["problem_type", "error", "fix",
+                           "reasoning_path", "solution_steps", "common_traps"]
+        missing = [f for f in required_fields if not outer.get(f)]
+        if missing:
+            print(f"  [Analyzer] ✗ Missing required fields: {missing}", flush=True)
+            return {"skip": True, "error": "parse_failed"}
+
+        return {
+            "problem_type":    outer["problem_type"],
+            "error":           outer["error"],
+            "fix":             outer["fix"],
+            "reasoning_path":  outer["reasoning_path"],
+            "solution_steps":  outer["solution_steps"],
+            "common_traps":    outer["common_traps"],
+        }
 
     def _generate_hint(self, problem: str) -> Optional[dict]:
         """Phase 2：GLM 只看题目，独立生成解题思路提示（不受失败轨迹影响）。
@@ -675,7 +712,7 @@ class AnalyzerAgent(BaseAgent):
         verification,
         problem_tags: list[str],
     ) -> str:
-        """构造增强的 actionable_advice"""
+        """Construct enhanced actionable_advice"""
         code_snippet = self._extract_key_code_snippet(
             verification.code,
             problem_tags
@@ -693,7 +730,7 @@ class AnalyzerAgent(BaseAgent):
         code: str,
         problem_tags: list[str]
     ) -> Optional[str]:
-        """从完整代码中提取关键的可复用片段"""
+        """Extract key reusable fragments from complete code"""
         lines = code.split('\n')
 
         for line in lines:
@@ -725,7 +762,7 @@ class AnalyzerAgent(BaseAgent):
     # ------------------------------------------------------------------ #
 
     def _parse_markdown(self, text: str) -> dict:
-        """解析 Markdown 键值对格式，例如：
+        """Parse Markdown key-value pair format, for example:
         [Root_Cause]: xxx
         [Actionable_Advice]: xxx
 

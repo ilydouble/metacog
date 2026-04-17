@@ -64,34 +64,34 @@ class EpisodicMemory:
         answer: str,
         problem_type: str = "",
     ) -> str:
-        """添加一个成功案例到情景记忆
-        
-        参数
-        ----
+        """Add a success case to episodic memory (episodic fields only).
+
+        Parameters
+        ----------
         problem_id : str
-            题目 ID
+            Problem ID
         problem_text : str
-            题目完整描述
+            Full problem description
         solution_steps : list[str]
-            关键推理步骤（3-5 步）
+            verified_cot_trajectory as a single-item list
         key_insight : str
-            核心洞察（为什么这个方法有效）
+            state_evaluation_metric (value-network heuristic)
         tags : list[str]
-            题目标签
+            Inferred from problem_type keywords
         answer : str
-            答案
-            
-        返回
-        ----
+            Final answer (not stored in vector content)
+        problem_type : str
+            Abstract problem type description
+
+        Returns
+        -------
         memory_id : str
-            向量库中的 ID
+            ID in the vector store
         """
-        # 拼接向量化内容
-        # 以抽象问题类型为核心，避免被题目里具体数字/符号主导
         steps_text = "\n".join(f"{i+1}. {step}" for i, step in enumerate(solution_steps))
-        tags_text = ", ".join(tags)
+        tags_text  = ", ".join(tags)
+
         if problem_type:
-            # 建议一：用抽象类型 + 洞察 + 标签作为 embedding，泛化性更强
             content = (
                 f"Problem type: {problem_type}\n"
                 f"Key insight: {key_insight}\n"
@@ -99,27 +99,23 @@ class EpisodicMemory:
                 f"Approach:\n{steps_text}"
             )
         else:
-            # fallback：沿用旧格式（GLM 没有生成 problem_type 时）
             content = (
-                f"题目：{problem_text[:200]}\n\n"
-                f"关键推理步骤：\n{steps_text}\n\n"
-                f"核心洞察：{key_insight}\n\n"
-                f"答案：{answer}"
+                f"Problem: {problem_text[:200]}\n\n"
+                f"Key insight: {key_insight}\n\n"
+                f"Approach:\n{steps_text}"
             )
 
-        # 构造元数据（完整信息保留在 metadata，不影响 embedding）
         metadata = {
-            "problem_id": problem_id,
+            "problem_id":   problem_id,
             "problem_text": problem_text[:500],
             "problem_type": problem_type,
-            "key_insight": key_insight,
-            "tags": tags,
-            "answer": answer,
-            "type": "success_case",
-            "num_steps": len(solution_steps),
+            "key_insight":  key_insight,
+            "tags":         tags,
+            "answer":       answer,
+            "type":         "success_case",
+            "num_steps":    len(solution_steps),
         }
-        
-        # 存入向量库
+
         memory_id = self.memu.add_memory(content=content, metadata=metadata)
         return memory_id
     
@@ -157,12 +153,12 @@ class EpisodicMemory:
         cases: list[MemorySearchResult],
         max_cases: int = 2,
     ) -> str:
-        """将成功案例格式化为 prompt 文本
+        """Format success cases as prompt text.
 
-        注意：
-        - 不暴露答案（避免锚定偏差）
-        - 明确告知模型这只是"可能相似"的例子，不保证完全匹配
-        - 只提供推理方法，不提供结论
+        Notes:
+        - Never exposes the answer (avoid anchoring bias)
+        - Clearly states this is for inspiration only, not a guaranteed match
+        - Renders new fields: problem_type, key_insight, tags, approach
         """
         if not cases:
             return ""
@@ -176,29 +172,27 @@ class EpisodicMemory:
         ]
 
         for i, case in enumerate(cases, 1):
-            meta = case.metadata
-            similarity = 1 - case.distance
-            tags = ", ".join(meta.get("tags", []))
+            meta        = case.metadata or {}
+            similarity  = 1 - case.distance
+            problem_type = meta.get("problem_type", "")
+            key_insight  = meta.get("key_insight", "")
+            tags         = meta.get("tags", [])
+            tags_str     = ", ".join(tags) if isinstance(tags, list) else str(tags)
 
-            # 从 content 中提取关键步骤和洞察（不含答案）
-            content = case.content
-            steps_section = ""
-            insight_section = ""
-            for line in content.split("\n"):
-                if "关键推理步骤" in line or "Key Steps" in line:
-                    continue
-                elif "核心洞察" in line or "Core Insight" in line:
-                    insight_section = line.replace("核心洞察：", "Insight: ").replace("Core Insight:", "Insight:")
-                elif "答案" in line or "Answer" in line:
-                    continue  # 跳过答案行
-                elif line.strip().startswith(("1.", "2.", "3.", "4.", "5.")):
-                    steps_section += line.strip() + "\n"
+            # approach is stored as a list in metadata (or in content as numbered lines)
+            approach = meta.get("approach", [])
 
-            lines.append(f"### Case {i} (Similarity: {similarity:.0%} | Tags: {tags})")
-            if steps_section:
-                lines.append(f"**Key Reasoning Steps:**\n{steps_section.strip()}")
-            if insight_section:
-                lines.append(f"**{insight_section.strip()}**")
+            lines.append(f"### Case {i} (Similarity: {similarity:.0%} | Tags: {tags_str})")
+            if problem_type:
+                lines.append(f"**Problem type**: {problem_type}")
+            if key_insight:
+                lines.append(f"**Key insight**: {key_insight}")
+            if approach:
+                if isinstance(approach, list):
+                    steps = "\n".join(f"  {step}" for step in approach)
+                else:
+                    steps = str(approach)
+                lines.append(f"**Approach**:\n{steps}")
             lines.append("\n⚠️  **Adapt, don't copy**: Only use this approach if the problem structure truly matches.\n")
 
         return "\n".join(lines)

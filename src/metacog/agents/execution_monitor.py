@@ -1,16 +1,16 @@
-"""ExecutionMonitor - 执行监控和智能刹车机制
+"""ExecutionMonitor - Execution monitoring and smart brake mechanism
 
-核心功能
---------
-1. **Early Stopping**: 检测死循环和无效重复
-2. **Mid-Task Reflection**: 强制中途反思
-3. **Timeout Protection**: 限制无效暴力破解
+Core Features
+-------------
+1. **Early Stopping**: Detect dead loops and ineffective repetition
+2. **Mid-Task Reflection**: Force mid-execution reflection
+3. **Timeout Protection**: Limit ineffective brute-force attempts
 
-设计原则
---------
-- 不让模型在错误的树上吊死
-- 早发现，早中断，早反思
-- 节省算力，提高效率
+Design Principles
+-----------------
+- Don't let the model hang itself on the wrong tree
+- Early detection, early interruption, early reflection
+- Save compute, improve efficiency
 """
 
 from __future__ import annotations
@@ -24,58 +24,58 @@ from typing import Optional
 
 @dataclass
 class ExecutionState:
-    """单步执行状态"""
+    """Single step execution state"""
     step_num: int
     command: str
     output: str
     timestamp: float
-    state_hash: str  # 用于检测重复
+    state_hash: str  # For detecting repetition
 
 
 @dataclass
 class MonitoringStats:
-    """监控统计"""
+    """Monitoring statistics"""
     total_steps: int = 0
     repeated_actions: int = 0
     error_count: int = 0
     timeout_count: int = 0
     forced_stops: int = 0
-    
-    # 状态哈希频率统计
+
+    # State hash frequency statistics
     state_hashes: dict[str, int] = field(default_factory=lambda: defaultdict(int))
-    
-    # 连续错误计数
+
+    # Consecutive error count
     consecutive_errors: int = 0
 
 
 class ExecutionMonitor:
-    """执行监控器
+    """Execution monitor
     
-    负责：
-    1. 检测死循环（状态哈希重复）
-    2. 检测无效重复（连续相同操作）
-    3. 触发中途反思
-    4. 超时保护
+    Responsibilities:
+    1. Detect dead loops (state hash repetition)
+    2. Detect ineffective repetition (consecutive identical operations)
+    3. Trigger mid-task reflection
+    4. Timeout protection
     """
     
     def __init__(
         self,
-        max_repeated_states: int = 3,  # 最多允许 3 次相同状态
-        max_consecutive_errors: int = 3,  # 最多允许 3 次连续错误
-        mid_task_reflection_threshold: float = 0.5,  # 在 50% 步数时触发反思
-        code_timeout: int = 10,  # 代码执行超时（秒）
+        max_repeated_states: int = 3,  # Maximum of 3 identical states allowed
+        max_consecutive_errors: int = 3,  # Maximum of 3 consecutive errors allowed
+        mid_task_reflection_threshold: float = 0.5,  # Trigger reflection at 50% of steps
+        code_timeout: int = 10,  # Code execution timeout (seconds)
     ) -> None:
         self.max_repeated_states = max_repeated_states
         self.max_consecutive_errors = max_consecutive_errors
         self.mid_task_reflection_threshold = mid_task_reflection_threshold
         self.code_timeout = code_timeout
         
-        # 执行历史
+        # Execution history
         self.execution_history: list[ExecutionState] = []
         self.stats = MonitoringStats()
     
     def reset(self) -> None:
-        """重置监控状态（新题目开始时调用）"""
+        """Reset monitoring state (called when new problem starts)"""
         self.execution_history.clear()
         self.stats = MonitoringStats()
     
@@ -86,11 +86,11 @@ class ExecutionMonitor:
         output: str,
         is_error: bool = False,
     ) -> None:
-        """记录一步执行"""
-        # 计算状态哈希
+        """Record one execution step"""
+        # Compute state hash
         state_hash = self._compute_state_hash(command, output)
         
-        # 记录执行状态
+        # Record execution state
         state = ExecutionState(
             step_num=step_num,
             command=command,
@@ -100,7 +100,7 @@ class ExecutionMonitor:
         )
         self.execution_history.append(state)
         
-        # 更新统计
+        # Update statistics
         self.stats.total_steps += 1
         self.stats.state_hashes[state_hash] += 1
         
@@ -108,27 +108,27 @@ class ExecutionMonitor:
             self.stats.error_count += 1
             self.stats.consecutive_errors += 1
         else:
-            self.stats.consecutive_errors = 0  # 成功则重置
+            self.stats.consecutive_errors = 0  # Reset if successful
     
     def should_early_stop(self) -> tuple[bool, str]:
-        """检查是否应该提前终止
+        """Check whether early termination should be triggered
         
-        返回
-        ----
+        Returns
+        -------
         (should_stop, reason)
         """
-        # 检查 1: 状态重复过多（死循环）
+        # Check 1: Too many repeated states (dead loop)
         for state_hash, count in self.stats.state_hashes.items():
             if count >= self.max_repeated_states:
-                return True, f"检测到死循环：相同状态重复 {count} 次"
+                return True, f"Dead loop detected: same state repeated {count} times"
         
-        # 检查 2: 连续错误过多
+        # Check 2: Too many consecutive errors
         if self.stats.consecutive_errors >= self.max_consecutive_errors:
-            return True, f"连续 {self.stats.consecutive_errors} 次错误，当前路径无效"
+            return True, f"{self.stats.consecutive_errors} consecutive errors, current path is invalid"
         
-        # 检查 3: 检测"无意义的重复操作"
+        # Check 3: Detect "meaningless repetitive operations"
         if self._detect_meaningless_repetition():
-            return True, "检测到无意义的重复操作"
+            return True, "Detected meaningless repetitive operations"
         
         return False, ""
     
@@ -137,20 +137,20 @@ class ExecutionMonitor:
         current_step: int,
         step_limit: int
     ) -> bool:
-        """检查是否应该触发中途反思
+        """Check whether mid-task reflection should be triggered
         
-        在达到步数限制的 50% 时触发
+        Trigger when reaching 50% of the step limit
         """
         threshold_step = int(step_limit * self.mid_task_reflection_threshold)
         
-        # 只在恰好达到阈值时触发一次
+        # Only trigger once when exactly reaching the threshold
         if current_step == threshold_step:
             return True
         
         return False
     
     def get_mid_reflection_prompt(self, current_step: int) -> str:
-        """生成中途反思的 prompt"""
+        """Generate mid-task reflection prompt"""
         recent_errors = self._get_recent_errors(n=3)
         
         prompt = f"""⚠️ CRITICAL CHECKPOINT (Step {current_step}) ⚠️
@@ -171,7 +171,7 @@ Choose a new method NOW."""
         return prompt
     
     def get_execution_summary(self) -> dict:
-        """获取执行摘要（供 AnalyzerAgent 分析）"""
+        """Get execution summary (for AnalyzerAgent analysis)"""
         return {
             "total_steps": self.stats.total_steps,
             "repeated_actions": self.stats.repeated_actions,
@@ -183,39 +183,39 @@ Choose a new method NOW."""
         }
     
     # ------------------------------------------------------------------ #
-    # 内部工具方法
+    # Internal utility methods
     # ------------------------------------------------------------------ #
     
     def _compute_state_hash(self, command: str, output: str) -> str:
-        """计算状态哈希（用于检测重复）
+        """Compute state hash (for detecting repetition)
         
-        只取命令和输出的核心部分，忽略时间戳等动态信息
+        Only take core parts of command and output, ignore dynamic info like timestamps
         """
-        # 简化命令（去除空格、换行）
+        # Normalize command (remove spaces, newlines)
         cmd_normalized = command.strip().lower()
         
-        # 简化输出（只取前 200 字符，忽略具体数值）
+        # Normalize output (only take first 200 characters, ignore specific values)
         out_normalized = output[:200].strip().lower()
         
-        # 计算哈希
+        # Compute hash
         content = f"{cmd_normalized}||{out_normalized}"
         return hashlib.md5(content.encode()).hexdigest()[:12]
     
     def _detect_meaningless_repetition(self) -> bool:
-        """检测无意义的重复操作
+        """Detect meaningless repetitive operations
         
-        例如：连续 3 次执行相同的代码但都失败
+        For example: executing the same code 3 times consecutively but all failed
         """
         if len(self.execution_history) < 3:
             return False
         
-        # 检查最近 3 步
+        # Check the last 3 steps
         recent = self.execution_history[-3:]
         
-        # 如果最近 3 步的命令完全相同
+        # If the commands of the last 3 steps are completely identical
         commands = [s.command.strip() for s in recent]
         if len(set(commands)) == 1:
-            # 并且输出都包含错误信息
+            # And all outputs contain error information
             outputs = [s.output.lower() for s in recent]
             error_keywords = ["error", "traceback", "exception", "failed"]
             
@@ -225,7 +225,7 @@ Choose a new method NOW."""
         return False
     
     def _get_recent_errors(self, n: int = 3) -> list[ExecutionState]:
-        """获取最近的 n 个错误步骤"""
+        """Get the most recent n error steps"""
         errors = [
             state for state in self.execution_history
             if any(kw in state.output.lower() for kw in ["error", "traceback", "exception"])
@@ -233,7 +233,7 @@ Choose a new method NOW."""
         return errors[-n:] if errors else []
     
     def _format_recent_errors(self, errors: list[ExecutionState]) -> str:
-        """格式化最近的错误"""
+        """Format recent errors"""
         if not errors:
             return "   No recent errors (but no progress either)"
         

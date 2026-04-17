@@ -1,11 +1,11 @@
-"""ExecutorAgent - 跑 Solver，每题结束后发 TrajectoryEvent。
+"""ExecutorAgent - Runs Solver, emits TrajectoryEvent after each problem.
 
-改造要点
---------
-1. 在组装 system prompt 前，拿当前题目去 memU 做 Top-K 检索
-2. 只注入最相关的 1-2 条记忆（极度精简）
-3. 不再加载整个 MemoryStore 的所有记忆
-4. 🔥 集成 ExecutionMonitor：智能刹车和中途反思
+Key Points
+----------
+1. Before assembling system prompt, query memU for Top-K retrieval with current problem
+2. Only inject the most relevant 1-2 memories (extremely concise)
+3. No longer load all memories from entire MemoryStore
+4. 🔥 Integrated ExecutionMonitor: smart brake and mid-execution reflection
 """
 
 from __future__ import annotations
@@ -20,36 +20,36 @@ from minisweagent.models.litellm_model import LitellmModel
 
 
 class VerboseAgent(DefaultAgent):
-    """实时打印每一步模型输出和执行结果，方便调试。"""
+    """Real-time print every step's model output and execution results for debugging."""
 
     def query(self) -> dict:
-        print(f"\n=== Step {self.n_calls + 1} · 正在调用模型... ===", flush=True)
+        print(f"\n=== Step {self.n_calls + 1} · Calling model... ===", flush=True)
         message = super().query()
         content = message.get("content", "") or ""
         tool_calls = message.get("tool_calls") or message.get("extra", {}).get("actions", [])
         if content:
-            preview = content[:800] if len(content) <= 800 else content[:800] + "\n...(截断)"
-            print("--- 模型回复 ---")
+            preview = content[:800] if len(content) <= 800 else content[:800] + "\n...(truncated)"
+            print("--- Model response ---")
             print(preview)
-            print("--- 回复结束 ---", flush=True)
+            print("--- End of response ---", flush=True)
         elif tool_calls:
-            # content 为空但有 tool_calls 是正常行为（Qwen3 关闭 thinking 后直接输出 tool call）
-            print(f"[纯 tool call，无文字说明（正常）]", flush=True)
+            # Empty content with tool_calls is normal (model outputs tool call directly)
+            print(f"[Tool call only, no text content (normal)]", flush=True)
         else:
-            print("!!! 模型回复为空且无 tool call，可能是网络错误或模型未响应 !!!", flush=True)
+            print("!!! Model response is empty and no tool call, possible network error or model not responding !!!", flush=True)
         return message
 
     def execute_actions(self, message: dict) -> list[dict]:
         actions = message.get("extra", {}).get("actions", [])
         for action in actions:
             cmd = action.get("command", "")
-            print(f">>> 执行命令: {cmd[:300]}", flush=True)
+            print(f">>> Execute command: {cmd[:300]}", flush=True)
         observations = super().execute_actions(message)
         for obs in observations:
             output = obs.get("extra", {}).get("raw_output", "") or obs.get("content", "")
             if output:
-                preview = output[:400] if len(output) <= 400 else output[:400] + "\n...(截断)"
-                print(f"<<< 执行结果:\n{preview}", flush=True)
+                preview = output[:400] if len(output) <= 400 else output[:400] + "\n...(truncated)"
+                print(f"<<< Execution result:\n{preview}", flush=True)
         return observations
 
 from ..bus import Event, EventBus, EventType
@@ -61,13 +61,13 @@ from .pot_sandbox_wrapper import create_pot_sandbox_wrapper
 
 
 class ExecutorAgent(BaseAgent):
-    """Solver 执行智能体（memU RAG 版本）。
+    """Solver executor agent (memU RAG version).
 
-    每道题：
-    1. 用当前题目去 memU 做 Top-K 检索（只取最相关的 1-2 条）
-    2. 从 SkillRegistry 生成技能描述，注入 system_template
-    3. 跑 DefaultAgent
-    4. 发布 TrajectoryEvent（供 AnalyzerAgent 消费）
+    For each problem:
+    1. Use current problem to do Top-K retrieval in memU (only take the most relevant 1-2 items)
+    2. Generate skill descriptions from SkillRegistry, inject into system_template
+    3. Run DefaultAgent
+    4. Publish TrajectoryEvent (for AnalyzerAgent consumption)
     """
 
     name = "executor"
@@ -77,32 +77,32 @@ class ExecutorAgent(BaseAgent):
         model: LitellmModel,
         bus: EventBus,
         scaffold: dict,
-        memory_store: MemoryStore | None = None,  # 保留兼容性，但不再使用
+        memory_store: MemoryStore | None = None,  # Retain compatibility but no longer used
         skill_registry: SkillRegistry | None = None,
         output_dir: Path | None = None,
         skills_dir: Path | None = None,
-        memu_client: MemUClient | None = None,  # memU 客户端（语义记忆）
-        rag_top_k: int = 2,  # Top-K 检索数量（关键参数！）
-        procedural_memory = None,  # ProceduralMemory 实例（程序记忆）
-        skill_top_k: int = 3,  # 检索多少个 skill
-        episodic_memory = None,  # EpisodicMemory 实例（情景记忆）
-        case_top_k: int = 1,  # 检索多少个成功案例
+        memu_client: MemUClient | None = None,  # memU client (semantic memory)
+        rag_top_k: int = 2,  # Top-K retrieval count (key parameter!)
+        procedural_memory = None,  # ProceduralMemory instance (procedural memory)
+        skill_top_k: int = 3,  # How many skills to retrieve
+        episodic_memory = None,  # EpisodicMemory instance (episodic memory)
+        case_top_k: int = 1,  # How many success cases to retrieve
     ) -> None:
         super().__init__(model, bus)
         self.scaffold = scaffold
-        self.memory_store = memory_store  # 保留但不再用于 prompt 注入
+        self.memory_store = memory_store  # Retain but no longer used for prompt injection
         self.skill_registry = skill_registry
         self.output_dir = output_dir
         self.skills_dir = skills_dir
-        self.memu = memu_client  # memU 客户端（语义记忆）
-        self.rag_top_k = rag_top_k  # 控制注入多少条记忆
-        self.procedural_memory = procedural_memory  # 程序记忆
-        self.skill_top_k = skill_top_k  # 控制注入多少个 skill
-        self.episodic_memory = episodic_memory  # 情景记忆
-        self.case_top_k = case_top_k  # 控制注入多少个成功案例
+        self.memu = memu_client  # memU client (semantic memory)
+        self.rag_top_k = rag_top_k  # Control how many memories to inject
+        self.procedural_memory = procedural_memory  # Procedural memory
+        self.skill_top_k = skill_top_k  # Control how many skills to inject
+        self.episodic_memory = episodic_memory  # Episodic memory
+        self.case_top_k = case_top_k  # Control how many success cases to inject
 
     def run_problem(self, problem_data: dict) -> dict:
-        """运行单道题，返回结果 dict，并发布 TrajectoryEvent。"""
+        """Run a single problem, return result dict, and publish TrajectoryEvent."""
         from utils.answer_extraction import extract_final_answer, normalize_answer
         from utils.evaluation import compare_answers
 
@@ -113,85 +113,110 @@ class ExecutorAgent(BaseAgent):
         ).strip()
 
         # ==========================================
-        # 核心改造：基于当前题目进行 Top-K RAG 检索
+        # Core modification: Top-K RAG retrieval based on current problem
         # ==========================================
         system_template = self.scaffold.get("system_template", "")
 
-        # 🔥 记录使用的记忆 ID（用于后续更新统计）
+        # Record used memory IDs (for subsequent statistics update)
         used_memory_ids = []
 
-        # 1. memU RAG 检索（只注入最相关的记忆）
+        # 1. memU RAG retrieval (only inject most relevant memories)
         if self.memu:
             try:
                 retrieved_memories = self.memu.search(
-                    query=problem,  # 用题目文本做查询
-                    top_k=self.rag_top_k  # 只取最相关的 K 条（默认 2）
+                    query=problem,  # Use problem text as query
+                    top_k=self.rag_top_k  # Only take the most relevant K items (default 2)
                 )
 
-                # 阈值过滤：distance > 0.75（相似度 < 25%）的记忆不注入
-                # 语义记忆 query（题目原文）与 document（Problem type + Error + Fix）
-                # 类型相近但仍有差异，故阈值比情景记忆（0.6）宽松
+                # Threshold filtering: memories with distance > 0.75 (similarity < 25%) are not injected
+                # Semantic memory query (original problem text) vs document (Problem type + Error + Fix)
+                # Types are close but still have differences, so threshold is looser than episodic memory (0.6)
                 retrieved_memories = [m for m in retrieved_memories if m.distance <= 0.75]
 
                 if retrieved_memories:
-                    # 计算平均相似度（显示在标题里）
+                    # Calculate average similarity (displayed in title)
                     avg_similarity = 1 - sum(m.distance for m in retrieved_memories) / len(retrieved_memories)
 
-                    # 组装记忆注入（英文统一格式 + 显示相似度）
+                    # Assemble memory injection
                     memory_injection = (
-                        f"\n## 📚 Historical Lessons (Avg Relevance: {avg_similarity:.0%})\n"
-                        "The following are insights extracted from similar problems you previously encountered.\n"
-                        "They may or may not apply to the current task. Use them as **reference**, not rigid rules.\n\n"
+                        f"\n## 📚 Retrieved Semantic Memory (Avg Relevance: {avg_similarity:.0%})\n"
+                        "The following lessons were extracted from cognitively similar failed trajectories.\n"
+                        "Use them as **reference warnings**, not rigid rules.\n\n"
                     )
 
                     for idx, mem in enumerate(retrieved_memories, 1):
                         sim = 1 - mem.distance
-                        # mem.content 格式: "Problem type: ...\nError: ...\nFix: ..." (英文)
-                        memory_injection += f"### Lesson {idx} (Relevance: {sim:.0%})\n{mem.content}\n"
-                        memory_injection += "⚠️  **Applicability**: Only use this insight if the current problem shares the same mathematical structure.\n\n"
+                        meta = mem.metadata or {}
+                        is_hint_only = "hint_only" in meta.get("tags", [])
+
+                        if is_hint_only:
+                            memory_injection += f"### Hint {idx} (Relevance: {sim:.0%})\n{mem.content}\n\n"
+                        else:
+                            # Render structured fields from metadata when available,
+                            # otherwise fall back to raw content
+                            problem_type   = meta.get("problem_type", "")
+                            error          = meta.get("error", "")
+                            fix            = meta.get("fix", "")
+                            solution_steps = meta.get("solution_steps", "")
+                            common_traps   = meta.get("common_traps", "")
+
+                            if fix:
+                                memory_injection += f"### Lesson {idx} (Relevance: {sim:.0%})\n"
+                                if problem_type:
+                                    memory_injection += f"**Problem type**: {problem_type}\n"
+                                memory_injection += f"**Error**: {error}\n"
+                                memory_injection += f"**Fix**: {fix}\n"
+                                if solution_steps:
+                                    memory_injection += f"**Solution steps**: {solution_steps}\n"
+                                if common_traps:
+                                    memory_injection += f"**Common traps**: {common_traps}\n"
+                                memory_injection += "\n"
+                            else:
+                                # Fallback for old-format memories
+                                memory_injection += f"### Lesson {idx} (Relevance: {sim:.0%})\n{mem.content}\n\n"
+
                         used_memory_ids.append(("semantic", mem.id))
 
                     system_template = system_template.rstrip() + "\n\n" + memory_injection
-
-                    print(f"  [Executor] 注入 {len(retrieved_memories)} 条相关记忆 (距离: {[f'{m.distance:.3f}' for m in retrieved_memories]})", flush=True)
+                    print(f"  [Executor] Injected {len(retrieved_memories)} semantic memories (distances: {[f'{m.distance:.3f}' for m in retrieved_memories]})", flush=True)
                 else:
-                    print(f"  [Executor] 语义记忆：无足够相关的记忆（阈值 distance≤0.75），跳过注入", flush=True)
+                    print(f"  [Executor] Semantic memory: no sufficiently relevant entries (threshold distance≤0.75), skipping injection", flush=True)
             except Exception as exc:
-                print(f"  [Executor] memU 检索失败: {exc}", flush=True)
+                print(f"  [Executor] memU retrieval failed: {exc}", flush=True)
 
-        # 2. 技能检索（使用程序记忆）
+        # 2. Skill retrieval (procedural memory)
         if self.procedural_memory:
             try:
                 retrieved_skills = self.procedural_memory.search_skills(
                     query=problem,
-                    top_k=self.skill_top_k  # 只取最相关的 K 个 skill（默认 3）
+                    top_k=self.skill_top_k  # Only take the most relevant K skills (default 3)
                 )
 
                 if retrieved_skills:
                     skill_text = self.procedural_memory.format_skills_for_prompt(
                         retrieved_skills,
-                        include_code=False  # 只包含元数据，不包含完整代码
+                        include_code=False  # Only include metadata, not complete code
                     )
                     system_template = system_template.rstrip() + "\n\n" + skill_text
-                    print(f"  [Executor] 注入 {len(retrieved_skills)} 个相关技能 (程序记忆)", flush=True)
+                    print(f"  [Executor] Injected {len(retrieved_skills)} relevant skills (procedural memory)", flush=True)
             except Exception as exc:
-                print(f"  [Executor] 程序记忆检索失败: {exc}", flush=True)
+                print(f"  [Executor] Procedural memory retrieval failed: {exc}", flush=True)
         elif self.skill_registry:
-            # 兼容：如果没有程序记忆，使用旧方式（全量注入）
+            # Fallback: inject all skills if no procedural memory available
             skill_text = self.skill_registry.as_prompt_text()
             if skill_text:
                 system_template = system_template.rstrip() + "\n\n" + skill_text
-                print(f"  [Executor] ⚠️  全量注入技能（建议启用程序记忆）", flush=True)
+                print(f"  [Executor] ⚠️  Injecting all skills (consider enabling procedural memory)", flush=True)
 
-        # 🔥 3. 情景记忆检索（成功案例）
+        # 3. Episodic memory retrieval (success cases)
         if self.episodic_memory:
             try:
                 similar_cases = self.episodic_memory.search_similar_cases(
                     query=problem,
-                    top_k=self.case_top_k  # 只取最相似的 K 个案例（默认 1）
+                    top_k=self.case_top_k  # Only take the most similar K cases (default 1)
                 )
 
-                # 相似度阈值过滤：distance > 0.6（相似度 < 40%）的案例不注入，避免不相关干扰
+                # Similarity threshold filtering: cases with distance > 0.6 (similarity < 40%) are not injected to avoid irrelevant interference
                 similar_cases = [c for c in similar_cases if c.distance <= 0.6]
 
                 if similar_cases:
@@ -200,18 +225,18 @@ class ExecutorAgent(BaseAgent):
                         max_cases=self.case_top_k
                     )
                     system_template = system_template.rstrip() + "\n\n" + case_text
-                    print(f"  [Executor] 注入 {len(similar_cases)} 个类似成功案例 (情景记忆, 相似度≥40%)", flush=True)
+                    print(f"  [Executor] Injected {len(similar_cases)} similar success cases (episodic memory, similarity≥40%)", flush=True)
                     for case in similar_cases:
                         used_memory_ids.append(("episodic", case.id))
                 else:
-                    print(f"  [Executor] 情景记忆：无足够相似的案例（阈值 40%），跳过注入", flush=True)
+                    print(f"  [Executor] Episodic memory: no sufficiently similar cases (threshold 40%), skipping injection", flush=True)
             except Exception as exc:
-                print(f"  [Executor] 情景记忆检索失败: {exc}", flush=True)
+                print(f"  [Executor] Episodic memory retrieval failed: {exc}", flush=True)
 
         start_time = time.time()
         traj_path = (self.output_dir / f"{problem_id}.traj.json") if self.output_dir else None
 
-        # 构造 PYTHONPATH：把 skills_dir 追加到当前环境的 PYTHONPATH 前面
+        # Construct PYTHONPATH: append skills_dir to the front of current environment's PYTHONPATH
         import os as _os
         env_extra: dict[str, str] = {}
         if self.skills_dir and self.skills_dir.exists():
@@ -231,7 +256,7 @@ class ExecutorAgent(BaseAgent):
             output_path=traj_path,
         )
 
-        # 🔥 PoT 沙箱包装：监控报错 → 注入反思 prompt → 继续线性执行
+        # PoT sandbox wrapper: monitor errors → inject reflection prompt → continue linear execution
         agent = create_pot_sandbox_wrapper(agent)
 
         error = None
@@ -242,9 +267,45 @@ class ExecutorAgent(BaseAgent):
         try:
             result = agent.run(task=problem)
             submission = result.get("submission", "")
+
+            # Extract answer (prioritize extraction from submission)
             extracted_answer = extract_final_answer(submission)
             if extracted_answer:
                 extracted_answer = normalize_answer(extracted_answer)
+
+            # Fallback 1: when submission is empty, search in assistant message content
+            if not extracted_answer:
+                for msg in reversed(agent.messages):
+                    role = msg.get("role", "")
+                    content = msg.get("content", "") or ""
+                    if role == "assistant" and content:
+                        fallback = extract_final_answer(content)
+                        if fallback:
+                            extracted_answer = normalize_answer(fallback)
+                            break
+
+            # Fallback 2: scan tool (bash execution result) messages, look for COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT signal
+            if not extracted_answer:
+                for msg in reversed(agent.messages):
+                    if msg.get("role") != "tool":
+                        continue
+                    raw = msg.get("extra", {}).get("raw_output", "") or msg.get("content", "") or ""
+                    lines = raw.splitlines()
+                    for i, line in enumerate(lines):
+                        if line.strip() == "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT":
+                            # Look down for the first non-empty line containing numbers
+                            for j in range(i + 1, len(lines)):
+                                candidate_line = lines[j].strip()
+                                if candidate_line:
+                                    candidate = normalize_answer(candidate_line)
+                                    if candidate and any(c.isdigit() for c in candidate):
+                                        extracted_answer = candidate
+                                        break
+                            if extracted_answer:
+                                break
+                    if extracted_answer:
+                        break
+
             if extracted_answer:
                 passed = compare_answers(extracted_answer, expected_answer)
         except Exception as exc:
@@ -264,7 +325,7 @@ class ExecutorAgent(BaseAgent):
             "traj_path": str(traj_path) if traj_path else None,
         }
 
-        # 🔥 更新使用记忆的统计
+        # Update usage statistics for memories
         if used_memory_ids:
             for layer, mem_id in used_memory_ids:
                 try:
@@ -275,9 +336,9 @@ class ExecutorAgent(BaseAgent):
                     elif layer == "episodic" and self.episodic_memory:
                         self.episodic_memory.memu.update_usage_stats(mem_id, success=passed)
                 except Exception:
-                    pass  # 静默失败，不影响主流程
+                    pass  # Silent failure, does not affect main flow
 
-        # 发布轨迹事件
+        # Publish trajectory event
         self._publish(Event(type=EventType.TRAJECTORY, data=record))
         return record
 

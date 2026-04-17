@@ -1,6 +1,6 @@
-"""答案提取工具
+"""Answer Extraction Utilities
 
-从 agent 输出中提取数学答案，支持多种格式。
+Extracts mathematical answers from agent outputs, supporting multiple formats.
 """
 
 import re
@@ -8,59 +8,64 @@ from typing import Optional
 
 
 def extract_boxed_answer(text: str) -> Optional[str]:
-    """从文本中提取 \\boxed{} 格式的答案
-    
+    """Extract answers in \\boxed{} format from text.
+
     Args:
-        text: 包含答案的文本
-        
+        text: Text containing the answer
+
     Returns:
-        提取的答案字符串，如果未找到则返回 None
+        The extracted answer string, or None if not found
     """
-    # 匹配 \boxed{...} 格式
-    # 使用非贪婪匹配处理嵌套大括号
+    # Match \boxed{...} format
+    # Use non-greedy matching to handle nested braces
     pattern = r'\\boxed\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}'
     matches = re.findall(pattern, text)
-    
+
     if matches:
-        # 返回最后一个 \boxed{} 中的内容（通常是最终答案）
+        # Return the content of the last \boxed{} (usually the final answer)
         return matches[-1].strip()
-    
-    # 尝试更宽松的匹配
+
+    # Try more lenient matching
     pattern2 = r'\\boxed\s*\{([^}]+)\}'
     matches2 = re.findall(pattern2, text)
     if matches2:
         return matches2[-1].strip()
-    
+
     return None
 
 
 def extract_final_answer(text: str) -> Optional[str]:
-    """从文本中提取最终答案，尝试多种格式
-    
-    支持的格式：
-    - \\boxed{答案}
-    - 答案是：XXX
-    - 最终答案：XXX
-    - 答案：XXX
-    - The answer is XXX
-    
+    """Extract the final answer from text, trying multiple formats.
+
+    Supported formats:
+    - \\boxed{answer}
+    - The answer is: XXX
+    - Final answer: XXX
+    - Answer: XXX
+
     Args:
-        text: 包含答案的文本
-        
+        text: The text containing the answer
+
     Returns:
-        提取的答案字符串，如果未找到则返回 None
+        The extracted answer string, or None if not found
     """
-    # 1. 首先尝试 \boxed{} 格式
+    if not text:
+        return None
+
+    # If it's purely a number, return it directly
+    if re.match(r'^\s*-?\d+\.?\d*\s*$', text) or re.match(r'^\s*-?\d+/\d+\s*$', text):
+        return text.strip()
+
+    # 1. First try \boxed{} format
     boxed = extract_boxed_answer(text)
     if boxed:
         return boxed
-    
-    # 2. 尝试 "答案是"、"最终答案" 等格式
+
+    # 2. Try "The answer is", "Final answer" etc.
     patterns = [
-        r'答案[是为][：:]\s*([^\n]+)',
-        r'最终答案[是为]?[：:]\s*([^\n]+)',
+        r'Final answer(?: is)?\s*[:：]?\s*([^\n]+)',
         r'The answer is\s*[:：]?\s*([^\n]+)',
-        r'answer[:：]\s*([^\n]+)',
+        r'answer\s*[:：]\s*([^\n]+)',
     ]
     
     for pattern in patterns:
@@ -68,77 +73,97 @@ def extract_final_answer(text: str) -> Optional[str]:
         if matches:
             return matches[-1].strip()
     
-    # 3. 尝试匹配最后一行的数字（作为最后手段）
+    # 3. Try to match numbers in the last line (as a fallback)
     lines = text.strip().split('\n')
     for line in reversed(lines):
         line = line.strip()
-        # 匹配纯数字或简单表达式
-        if re.match(r'^-?\d+\.?\d*$', line):
+        if not line:
+            continue
+
+        # First check if the line is purely a number or fraction
+        if re.match(r'^-?\d+\.?\d*$', line) or re.match(r'^-?\d+/\d+$', line):
             return line
-        # 匹配分数
-        if re.match(r'^\d+/\d+$', line):
-            return line
-    
+
+        # Extract the only number in the line
+        # e.g. "The answer is 123" or "=> 123"
+        # Avoid extracting if there are multiple numbers
+        # Use word boundaries to ensure matching complete numbers
+        nums = re.findall(r'(?<!\d)-?\d+\.?\d*(?!\d)|(?<!\d)-?\d+/\d+(?!\d)', line)
+        if len(nums) == 1:
+            return nums[0]
+
     return None
 
 
 def normalize_answer(answer: str) -> str:
-    """标准化答案格式
+    """Normalize the answer format.
 
-    处理：
-    - 去除首尾空白和换行
-    - 去除 LaTeX 格式符号（\\boxed{x} → x 等）
-    - 去除 $ 符号
-    - 去除首尾常见标点（句号、逗号等），避免 "588." 与 "588" 比对失败
-    - 处理前导零（如 073 -> 73）
-    - 处理小数格式（去除尾部多余的零）
-    - 处理分数格式（约分）
+    Processing steps:
+    - Strip leading/trailing whitespaces and newlines
+    - Remove LaTeX formatting symbols (\\boxed{x} -> x etc.)
+    - Remove $ symbols
+    - Remove common punctuation at ends (periods, commas, etc.)
+    - Handle leading zeros (e.g., 073 -> 73)
+    - Handle decimal format (remove trailing zeros)
+    - Handle fractions (simplify)
 
-    注意：不对答案内容做数据集相关的假设（如"答案一定是整数"），
-    保持对整数、小数、分数、文字等各类答案的通用性。
+    Note: Makes no dataset-specific assumptions about answer content
+    (e.g., "answer must be an integer"), keeping it general for integers,
+    decimals, fractions, and text answers.
 
     Args:
-        answer: 原始答案字符串
+        answer: Original answer string
 
     Returns:
-        标准化后的答案字符串
+        Normalized answer string
     """
     if not answer:
         return ""
 
-    # 去除首尾空白（含换行）
+    # Strip whitespaces
     answer = answer.strip()
 
-    # 去除 LaTeX 格式符号
+    # Remove LaTeX symbols
     answer = re.sub(r'\\[a-zA-Z]+\{([^}]*)\}', r'\1', answer)
     answer = re.sub(r'\\[a-zA-Z]+', '', answer)
 
-    # 去除 $ 符号
+    # Remove $ symbols
     answer = answer.replace('$', '')
 
-    # 去除首尾常见标点（句号/逗号/分号等），再次 strip 空白
-    # 只去首尾，不动中间内容，对分数、小数、文字答案均安全
+    # Remove common punctuation at ends, then strip again
     answer = answer.strip('.,;:!?')
     answer = answer.strip()
 
-    # 尝试处理数值
+    # Try processing numeric values
     try:
-        # 检查是否是整数（可能带前导零）
+        # Check if it's an integer (possibly with leading zeros)
         if re.match(r'^-?0*\d+$', answer):
             return str(int(answer))
 
-        # 检查是否是小数
+        # Check if it's a decimal
         if re.match(r'^-?\d+\.\d+$', answer):
-            # 去除尾部多余的零
+            # Remove trailing zeros
             return str(float(answer)).rstrip('0').rstrip('.')
 
-        # 检查是否是分数
+        # Check if it's a fraction
         if re.match(r'^-?\d+/\d+$', answer):
             parts = answer.split('/')
             num, den = int(parts[0]), int(parts[1])
             from math import gcd
             g = gcd(abs(num), den)
             return f"{num // g}/{den // g}"
+
+        # Fallback: try to extract the only integer in the answer string
+        # (Handles cases with messy text like "The answer is 123")
+        nums = re.findall(r'(?<!\d)-?\d+(?!\d)', answer)
+        if len(nums) == 1:
+            return str(int(nums[0]))
+
+        # Last resort: if there is only one number (integer or decimal), extract it
+        nums = re.findall(r'(?<!\d)-?\d+\.?\d*(?!\d)', answer)
+        if len(nums) == 1:
+            return str(float(nums[0])).rstrip('0').rstrip('.')
+
     except (ValueError, ZeroDivisionError):
         pass
 
@@ -146,13 +171,13 @@ def normalize_answer(answer: str) -> str:
 
 
 def extract_and_normalize(text: str) -> Optional[str]:
-    """提取并标准化答案
-    
+    """Extract and normalize the answer.
+
     Args:
-        text: 包含答案的文本
-        
+        text: Text containing the answer
+
     Returns:
-        标准化后的答案字符串，如果未找到则返回 None
+        The normalized answer string, or None if not found
     """
     answer = extract_final_answer(text)
     if answer:

@@ -1,25 +1,28 @@
-"""FailureRouter - 操作性失误路由过滤器
+"""FailureRouter - Operational mistake routing filter
 
-在 AnalyzerAgent 分析之前拦截"操作性失误"，阻止其写入 memU。
+Intercepts "operational mistakes" before AnalyzerAgent analysis, prevents them from being written to memU.
 
-分类规则
---------
-OPERATIONAL（操作性失误，直接丢弃）：
-  - SyntaxError: 语法错误，写对就好，无需学习
-  - ImportError / ModuleNotFoundError: 库没导入
-  - IndentationError: 缩进错误
-  - 死循环（TimeoutError / RecursionError）
-  - 纯粹的代码格式错误
+Classification Rules
+--------------------
+OPERATIONAL (operational mistakes, discard directly):
+  - SyntaxError: syntax error, just write it correctly, no need to learn
+  - ImportError / ModuleNotFoundError: library not imported
+  - IndentationError: indentation error
+  - Dead loops (TimeoutError / RecursionError)
+  - Pure code format errors
 
-LOGICAL（逻辑/公式错误，允许进入反思流）：
-  - 数学公式错误（计算结果不对）
-  - 错误的算法选择
-  - 逻辑推理错误
-  - 边界条件遗漏
+LOGICAL (logical/formula errors, allowed to enter reflection flow):
+  - Math formula errors (calculation result incorrect)
+  - Wrong algorithm choice
+  - Logical reasoning errors
+  - Missing boundary conditions
 
-设计原则
---------
-只看"最后的错误观察"，快速判断，不调用 LLM。
+Design Principles
+-----------------
+- Only intercept clear "operational mistakes", don't interfere with "logical errors"
+- Conservative strategy: allow anything uncertain to pass (false negative ok, false positive not ok)
+- Modular: future extensibility for more filtering rules
+- Only look at "final error observation", quick judgment, no LLM calls
 """
 
 from __future__ import annotations

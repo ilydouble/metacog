@@ -1,18 +1,18 @@
-"""PotSandboxWrapper - 轻量级 ToT 沙箱包装器
+"""PotSandboxWrapper - Lightweight ToT sandbox wrapper
 
-核心思路
---------
-PoT 报错 → 注入反思 prompt → 继续线性执行
+Core Idea
+---------
+PoT error → inject reflection prompt → continue linear execution
 
-不真正实现树状分支，而是：
-1. 监控每一步的代码执行结果（observation）
-2. 如果检测到报错 → 在下一步之前注入反思 prompt
-3. 继续线性执行（消耗 1 步预算）
+Instead of implementing true tree branching:
+1. Monitor code execution result (observation) at each step
+2. If error detected → inject reflection prompt before next step
+3. Continue linear execution (consumes 1 step budget)
 
-预算管理
---------
-- step_limit: 总算力预算（action count），包括反思步骤
-- 反思步骤本身也消耗预算，强制模型高效利用每一步
+Budget Management
+-----------------
+- step_limit: total compute budget (action count), including reflection steps
+- Reflection steps themselves consume budget, forcing the model to use each step efficiently
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ import re
 from typing import Any
 
 
-# 通用兜底反思
+# Generic fallback reflection
 _REFLECTION_DEFAULT = """\
 ⚠️ Your previous code failed. STOP and reflect:
 1. What went wrong? (identify the exact error)
@@ -30,7 +30,7 @@ _REFLECTION_DEFAULT = """\
 
 Do NOT repeat the same approach."""
 
-# 按错误类型分化的反思 prompt
+# Reflection prompts differentiated by error type
 _REFLECTION_BY_TYPE = {
     "recursion": """\
 ⚠️ RecursionError: your code has infinite recursion.
@@ -81,7 +81,7 @@ Do NOT change the algorithm, just fix the code structure.""",
 3. Verify each step of your math manually before coding""",
 }
 
-# 错误关键词 → 错误类型映射（按优先级排列）
+# Error keywords → Error type mapping (arranged by priority)
 _ERROR_PATTERNS: list[tuple[str, str]] = [
     (r"RecursionError|maximum recursion depth", "recursion"),
     (r"ZeroDivisionError",                      "zero_division"),
@@ -95,7 +95,7 @@ _ERROR_PATTERNS: list[tuple[str, str]] = [
 
 
 def _classify_error(observation: str) -> str:
-    """返回错误类型 key，未匹配返回空字符串"""
+    """Return error type key, return empty string if no match"""
     if not observation:
         return ""
     for pattern, error_type in _ERROR_PATTERNS:
@@ -109,7 +109,7 @@ def _is_error_observation(observation: str) -> bool:
 
 
 def _get_reflection_prompt(error_type: str, consecutive: int) -> str:
-    """根据错误类型和连续次数返回反思 prompt"""
+    """Return reflection prompt based on error type and consecutive count"""
     base = _REFLECTION_BY_TYPE.get(error_type, _REFLECTION_DEFAULT)
     if consecutive >= 2:
         base += "\n\n🚨 You have failed multiple times. Completely change your strategy."
@@ -117,36 +117,36 @@ def _get_reflection_prompt(error_type: str, consecutive: int) -> str:
 
 
 def create_pot_sandbox_wrapper(base_agent: Any) -> Any:
-    """包装 DefaultAgent，添加 PoT 沙箱监控和反思注入
+    """Wrap DefaultAgent, add PoT sandbox monitoring and reflection injection
     
-    参数
-    ----
+    Parameters
+    ----------
     base_agent : DefaultAgent
-        被包装的原始 Agent
+        The original Agent to be wrapped
         
-    返回
-    ----
+    Returns
+    -------
     base_agent : DefaultAgent
-        包装后的 Agent（修改了 step 方法）
+        The wrapped Agent (with modified step method)
     """
     original_step = base_agent.step
 
-    # 统计信息
+    # Statistics
     stats = {
         "total_steps": 0,
-        "error_steps": 0,       # 发生错误的步数
-        "reflection_steps": 0,  # 触发反思的次数
+        "error_steps": 0,       # Number of steps with errors
+        "reflection_steps": 0,  # Number of reflections triggered
         "consecutive_errors": 0,
     }
 
     def wrapped_step() -> list[dict]:
-        """包装后的 step 方法，监控 PoT 报错并注入反思 prompt"""
+        """The wrapped step method, monitors PoT errors and injects reflection prompts"""
         stats["total_steps"] += 1
 
-        # 执行原始 step
+        # Execute original step
         result = original_step()
 
-        # 检查 observation 是否包含错误
+        # Check if observation contains errors
         observation = _get_observation(base_agent.messages)
 
         error_type = _classify_error(observation)
@@ -169,7 +169,7 @@ def create_pot_sandbox_wrapper(base_agent: Any) -> Any:
                 flush=True,
             )
         else:
-            # 执行成功，重置连续错误计数
+            # Execution successful, reset consecutive error count
             if stats["consecutive_errors"] > 0:
                 print(
                     f"  [PoT-Sandbox] ✓ Step {stats['total_steps']} 执行成功，重置错误计数",
@@ -180,14 +180,14 @@ def create_pot_sandbox_wrapper(base_agent: Any) -> Any:
         return result
 
     def wrapped_run(*args, **kwargs):
-        """包装后的 run 方法，重置统计信息"""
+        """The wrapped run method, resets statistics"""
         stats["total_steps"] = 0
         stats["error_steps"] = 0
         stats["reflection_steps"] = 0
         stats["consecutive_errors"] = 0
         result = base_agent._original_run(*args, **kwargs)
-
-        # 打印统计
+        
+        # Print statistics
         if stats["reflection_steps"] > 0:
             print(
                 f"  [PoT-Sandbox] 📊 共 {stats['total_steps']} 步, "
@@ -197,7 +197,7 @@ def create_pot_sandbox_wrapper(base_agent: Any) -> Any:
             )
         return result
 
-    # 替换方法
+    # Replace methods
     base_agent._original_run = base_agent.run
     base_agent.step = wrapped_step
     base_agent.run = wrapped_run
@@ -206,22 +206,22 @@ def create_pot_sandbox_wrapper(base_agent: Any) -> Any:
 
 
 def _get_observation(messages: list[dict]) -> str:
-    """从最近的消息中提取 observation 内容
+    """Extract observation content from recent messages
 
-    mini-swe-agent 1.1 格式：
-    - messages 列表中，observation 消息的 role 可能是 "user" 或 "tool"
-    - 真正的执行结果在消息的 content 中，或 extra.outputs 中
+    mini-swe-agent 1.1 format:
+    - In the messages list, observation message role may be "user" or "tool"
+    - The actual execution result is in the message's content, or in extra.outputs
     """
-    # 从后往前找，跳过 assistant 消息，找最近的 observation
+    # Search from back, skip assistant messages, find the nearest observation
     for msg in reversed(messages):
         role = msg.get("role", "")
         extra = msg.get("extra", {})
 
-        # mini-swe-agent 1.1：observation 在 extra.outputs 中
+        # mini-swe-agent 1.1: observation is in extra.outputs
         if "outputs" in extra and extra["outputs"]:
             return "\n".join(str(o) for o in extra["outputs"])
 
-        # 兼容其他格式
+        # Compatible with other formats
         if role in ("tool", "observation"):
             return msg.get("content", "")
 
@@ -229,10 +229,10 @@ def _get_observation(messages: list[dict]) -> str:
 
 
 def _inject_reflection(agent: Any, reflection: str) -> None:
-    """向 Agent 的消息历史中注入反思 prompt
+    """Inject reflection prompt into Agent's message history
 
-    使用 agent.model.format_message() 格式化，
-    然后通过 agent.add_messages() 插入到对话历史。
+    Use agent.model.format_message() to format,
+    Then insert into conversation history via agent.add_messages().
     """
     reflection_message = agent.model.format_message(
         role="user",
