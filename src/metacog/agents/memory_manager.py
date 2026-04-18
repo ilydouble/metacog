@@ -44,7 +44,7 @@ class MemoryManagerAgent(BaseAgent):
         super().__init__(model, bus)
         self.store = memory_store  # Optional YAML backup
 
-        # Initialize memU client (core storage)
+        # Initialize memU client (math_lessons collection — stores both distilled lessons and hints)
         self.memu = MemUClient(
             collection_name=collection_name,
             persist_dir=memu_persist_dir,
@@ -72,24 +72,31 @@ class MemoryManagerAgent(BaseAgent):
                 print(f"  [MemoryManager] ⚠️  Phase 1 failed and no solution hint, skipping", flush=True)
                 return
 
-            print(f"  [MemoryManager] ℹ️  Storing hint-only entry (Phase 1 failed)", flush=True)
-            key_insight = solution_hint.get("key_insight", "")
-            approach    = solution_hint.get("approach", "")
-            content = f"Activation condition: (phase 1 failed, hint only)\n"
-            if key_insight:
-                content += f"Correct approach: {key_insight}\n"
-            if approach:
-                content += f"Key steps: {approach}\n"
+            print(f"  [MemoryManager] ℹ️  Storing hint-only entry in math_lessons (Phase 1 failed)", flush=True)
+            key_insight    = solution_hint.get("key_insight", "")
+            approach       = solution_hint.get("approach", [])
+            common_pitfall = solution_hint.get("common_pitfall", "")
+
+            # approach is a list — join for content text, store as list in metadata
+            if isinstance(approach, list):
+                approach_text = "\n".join(f"{i+1}. {s}" for i, s in enumerate(approach))
+            else:
+                approach_text = str(approach)
+
+            # Vectorized content: use problem text as retrieval anchor (no problem_type available)
+            # Strip insight and approach to avoid diluting the vector space
+            content = f"Problem snippet: {problem_text[:300]}\n"
 
             metadata = {
-                "tags":              ["hint_only"],
-                "activation_condition": "",
-                "meta_rule_injection":  "",
-                "problem_id":        problem_id,
-                "source_problem":    problem_text[:200],
+                "tags":            ["hint_only"],
+                "key_insight":     key_insight,
+                "approach":        approach,       # list stored directly
+                "common_pitfall":  common_pitfall,
+                "problem_id":      problem_id,
+                "source_problem":  problem_text[:200],
             }
             mem_id = self.memu.add_memory(content=content.strip(), metadata=metadata)
-            print(f"  [MemoryManager] ✓ Stored (hint-only): {mem_id[:12]}", flush=True)
+            print(f"  [MemoryManager] ✓ Stored (hint-only) in math_lessons: {mem_id[:12]}", flush=True)
             self._publish_updated(mem_id, problem_id, ["hint_only"])
             return
 
@@ -105,14 +112,12 @@ class MemoryManagerAgent(BaseAgent):
             print(f"  [MemoryManager] ⚠️  Missing 'fix' field, skipping", flush=True)
             return
 
-        # Vectorized content: problem_type as retrieval anchor
+        # Vectorized content: USE ONLY problem_type AND problem text snippet for retrieval matching
+        # Do NOT include error, fix, or solution steps here, as they dilute the vector space
+        # since the query will only be a raw problem text.
         content = (
             f"Problem type: {problem_type}\n"
-            f"Error: {error}\n"
-            f"Fix: {fix}\n"
-            f"Reasoning path: {reasoning_path}\n"
-            f"Solution steps: {solution_steps}\n"
-            f"Common traps: {common_traps}"
+            f"Problem snippet: {problem_text[:300]}"
         )
 
         metadata = {

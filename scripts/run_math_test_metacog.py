@@ -276,6 +276,7 @@ def main(
         collection_name="math_lessons",
         persist_dir=memu_dir
     )
+
     memu_count = memu_client.count()
     status = "新建" if memu_count == 0 else f"续跑，已有 {memu_count} 条"
     if no_semantic:

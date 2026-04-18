@@ -81,7 +81,7 @@ class ExecutorAgent(BaseAgent):
         skill_registry: SkillRegistry | None = None,
         output_dir: Path | None = None,
         skills_dir: Path | None = None,
-        memu_client: MemUClient | None = None,  # memU client (semantic memory)
+        memu_client: MemUClient | None = None,  # memU client (semantic memory: math_lessons)
         rag_top_k: int = 2,  # Top-K retrieval count (key parameter!)
         procedural_memory = None,  # ProceduralMemory instance (procedural memory)
         skill_top_k: int = 3,  # How many skills to retrieve
@@ -94,7 +94,7 @@ class ExecutorAgent(BaseAgent):
         self.skill_registry = skill_registry
         self.output_dir = output_dir
         self.skills_dir = skills_dir
-        self.memu = memu_client  # memU client (semantic memory)
+        self.memu = memu_client  # semantic memory (math_lessons, includes hint_only entries)
         self.rag_top_k = rag_top_k  # Control how many memories to inject
         self.procedural_memory = procedural_memory  # Procedural memory
         self.skill_top_k = skill_top_k  # Control how many skills to inject
@@ -128,10 +128,9 @@ class ExecutorAgent(BaseAgent):
                     top_k=self.rag_top_k  # Only take the most relevant K items (default 2)
                 )
 
-                # Threshold filtering: memories with distance > 0.75 (similarity < 25%) are not injected
-                # Semantic memory query (original problem text) vs document (Problem type + Error + Fix)
-                # Types are close but still have differences, so threshold is looser than episodic memory (0.6)
-                retrieved_memories = [m for m in retrieved_memories if m.distance <= 0.75]
+                # Threshold filtering: distance > 0.6 (similarity < 40%) → skip injection
+                # Tightened from 0.75 to 0.6 to prevent low-relevance memories from causing hallucinations
+                retrieved_memories = [m for m in retrieved_memories if m.distance <= 0.6]
 
                 if retrieved_memories:
                     # Calculate average similarity (displayed in title)
@@ -180,7 +179,7 @@ class ExecutorAgent(BaseAgent):
                     system_template = system_template.rstrip() + "\n\n" + memory_injection
                     print(f"  [Executor] Injected {len(retrieved_memories)} semantic memories (distances: {[f'{m.distance:.3f}' for m in retrieved_memories]})", flush=True)
                 else:
-                    print(f"  [Executor] Semantic memory: no sufficiently relevant entries (threshold distance≤0.75), skipping injection", flush=True)
+                    print(f"  [Executor] Semantic memory: no sufficiently relevant entries (threshold distance≤0.6), skipping injection", flush=True)
             except Exception as exc:
                 print(f"  [Executor] memU retrieval failed: {exc}", flush=True)
 

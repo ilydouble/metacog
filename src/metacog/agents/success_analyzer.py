@@ -317,10 +317,10 @@ class SuccessAnalyzer(BaseAgent):
 You are an AI Core Evaluator specializing in "Episodic Trajectory Distillation". Your task is to analyze an agent's successful execution trajectory and distill it EXCLUSIVELY into abstract, structured Episodic Memory to serve as a high-quality few-shot Chain-of-Thought (CoT) example.
 
 # Objective 1: The Filtering Gate
-You must only process trajectories that successfully solved the problem. If the trajectory is a failure or incomplete, output: {"status": "discard"}
+You must only process trajectories that successfully solved the problem. If the trajectory is a failure or incomplete, output EXACTLY AND ONLY: {"status": "discard"}
 
-# Objective 2: Structural De-parameterization & Answer Stripping
-1. Replace all specific numerical values and raw entities with generic mathematical variables (e.g., Target Sum S, Plane Equation P).
+# Objective 2: Structural De-parameterization & Answer Stripping (CRITICAL)
+1. Replace all specific numerical values, explicit coordinates, and raw entities with generic mathematical variables (e.g., Target Sum S, Plane Equation P, Bounding Box B). Do not leak specific numbers from the prompt.
 2. ABSOLUTELY NO FINAL ANSWERS: You must permanently delete the final numeric or algebraic answer from the memory. We are saving the *method*, not the *solution*.
 
 # Output Format (JSON)
@@ -328,21 +328,21 @@ If the trajectory is a valid success, output a standard JSON block inside ```jso
 
 ```json
 {
-  "problem_type": "<Abstract mathematical or algorithmic description of the problem category>",
-  "key_insight": "<What specific geometric/algebraic feature, theorem, or dimensionality reduction strategy simplified the problem?>",
+  "problem_type": "<Abstract mathematical or algorithmic description of the problem category (e.g., 'Optimization of bounded planar regions in 3D')>",
+  "key_insight": "<What specific geometric/algebraic feature, theorem, or dimensionality reduction strategy simplified the problem and gave confidence?>",
   "tags": ["<tag1>", "<tag2>", "<tag3>"],
   "approach": [
-    "<Step 1: e.g., substitute plane equation>",
-    "<Step 2: e.g., simplify inequalities>",
-    "<Step 3: e.g., integrate region area>"
+    "<Step 1: Abstract algorithmic action, e.g., 'Substitute the linear constraint to eliminate variables'>",
+    "<Step 2: Abstract algorithmic action, e.g., 'Project the system into a lower-dimensional plane'>",
+    "<Step 3: Abstract algorithmic action, e.g., 'Calculate the bounded area using generic vertex coordinates'>"
   ]
 }
 ```
 
 # Execution Constraints
-- The `tags` array should contain 2-4 lowercase snake_case strings representing the math domains.
+- The `tags` array should contain 2-4 lowercase snake_case strings representing the math domains (e.g., "number_theory", "combinatorics").
 - The `approach` array should contain 3-4 highly abstracted, imperative action steps showing the flow of logic.
-- Ensure no numbers from the original problem leak into the output."""
+- Ensure absolutely no original numbers, target answers, or specific equations leak into the output."""
 
         user_prompt = f"""Your task: Distill the following successful trajectory into episodic memory JSON. Output ONLY the ```json block. ALL content must be in English.
 
@@ -374,23 +374,39 @@ If the trajectory is a valid success, output a standard JSON block inside ```jso
             print(f"    [SuccessAnalyzer] GLM raw output:\n{llm_output[:300]}...", flush=True)
 
             import json as json_parser
-            # Extract JSON from ```json code block
+
+            # Try JSON first (```json block or bare JSON), then Markdown fallback
+            parsed = None
             clean = llm_output.strip()
             m = re.search(r"```json\s*(.*?)\s*```", clean, re.DOTALL)
             if m:
-                clean = m.group(1)
-            elif clean.startswith("```"):
-                clean = re.sub(r"^```[a-z]*\n?", "", clean)
-                clean = re.sub(r"\n?```$", "", clean.strip())
-
-            parsed = json_parser.loads(clean)
+                try:
+                    parsed = json_parser.loads(m.group(1))
+                except json_parser.JSONDecodeError:
+                    pass
+            if parsed is None:
+                bare = re.sub(r"^```[a-z]*\n?", "", clean)
+                bare = re.sub(r"\n?```$", "", bare.strip())
+                if bare.startswith("{"):
+                    try:
+                        parsed = json_parser.loads(bare)
+                    except json_parser.JSONDecodeError:
+                        pass
+            if parsed is None:
+                # Markdown fallback: [Problem_Type]: / [Key_Insight]: / [Tags]: / [Approach]:
+                parsed = self._parse_markdown(llm_output)
+                if "error" in parsed:
+                    parsed = None
+            if parsed is None:
+                print(f"    [SuccessAnalyzer] ✗ Both JSON and Markdown parse failed\nRaw: {llm_output[:200]}", flush=True)
+                return {"error": "parse_failed"}
 
             # Handle discard signal
             if parsed.get("status") == "discard":
                 print(f"    [SuccessAnalyzer] ⏭  Discarded by filtering gate", flush=True)
                 return {"error": "discarded"}
 
-            # Validate flat fields
+            # Validate fields
             required = ["problem_type", "key_insight", "tags", "approach"]
             missing = [k for k in required if not parsed.get(k)]
             if missing:
@@ -398,7 +414,7 @@ If the trajectory is a valid success, output a standard JSON block inside ```jso
                 return {"error": "missing_required_fields"}
 
             # Ensure tags and approach are lists
-            tags     = parsed["tags"] if isinstance(parsed["tags"], list) else [parsed["tags"]]
+            tags     = parsed["tags"] if isinstance(parsed["tags"], list) else [t.strip() for t in str(parsed["tags"]).split(",") if t.strip()]
             approach = parsed["approach"] if isinstance(parsed["approach"], list) else [parsed["approach"]]
 
             return {
@@ -408,9 +424,6 @@ If the trajectory is a valid success, output a standard JSON block inside ```jso
                 "approach":     approach,
             }
 
-        except json_parser.JSONDecodeError as exc:
-            print(f"    [SuccessAnalyzer] ✗ JSON parse failed: {exc}\nRaw: {llm_output[:200]}", flush=True)
-            return {"error": f"json_parse_error: {exc}"}
         except Exception as exc:
             print(f"    [SuccessAnalyzer] ✗ GLM call failed: {exc}", flush=True)
             return {"error": str(exc)}

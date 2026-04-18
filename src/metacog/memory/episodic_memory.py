@@ -88,21 +88,19 @@ class EpisodicMemory:
         memory_id : str
             ID in the vector store
         """
-        steps_text = "\n".join(f"{i+1}. {step}" for i, step in enumerate(solution_steps))
         tags_text  = ", ".join(tags)
 
         if problem_type:
+            # Vectorized content: ONLY problem type and tags for retrieval matching.
+            # Strip steps and insights to avoid diluting the vector space since the query is just a problem text.
             content = (
                 f"Problem type: {problem_type}\n"
-                f"Key insight: {key_insight}\n"
                 f"Tags: {tags_text}\n"
-                f"Approach:\n{steps_text}"
+                f"Problem snippet: {problem_text[:300]}"
             )
         else:
             content = (
-                f"Problem: {problem_text[:200]}\n\n"
-                f"Key insight: {key_insight}\n\n"
-                f"Approach:\n{steps_text}"
+                f"Problem: {problem_text[:300]}\n"
             )
 
         metadata = {

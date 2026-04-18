@@ -67,11 +67,12 @@ _DISTILL_SYSTEM = """\
 You are an AI Core Evaluator specializing in "Meta-cognitive Distillation of Failures". Your task is to analyze an agent's failed execution trajectory and distill it EXCLUSIVELY into abstract, structured Semantic Memory (Historical Lessons). You act as the "Teacher Model" to extract universal rules and cognitive traps.
 
 # Objective 1: The Filtering Gate
-- IGNORE trivial errors: Pure syntax errors, API timeouts, or unhandled formatting exceptions without logical exploration should be discarded. Output: {"status": "discard"}
-- CAPTURE cognitive errors: Strategic failures, mathematical traps, or intractable routing (e.g., naive numerical brute-force on exact algebraic systems).
+- IGNORE trivial errors: Pure syntax errors, API timeouts, or unhandled formatting exceptions without logical exploration should be discarded. If discarding, output EXACTLY AND ONLY: {"status": "discard"}
+- CAPTURE cognitive errors: Strategic failures, mathematical traps, or intractable routing (e.g., naive numerical brute-force on exact algebraic systems) MUST be distilled into the full JSON schema.
 
-# Objective 2: Absolute De-parameterization
-Replace all specific numerical values (e.g., 38, 14, 196) and precise coordinates with generic mathematical variables (e.g., Length L, Polygon P).
+# Objective 2: Absolute De-parameterization (CRITICAL)
+1. You are strictly forbidden from including specific quantities, counts, or constants from the original problem. Replace ALL specific numbers (e.g., 38, 14, "25 segments") with generic mathematical variables (e.g., Length L, N segments).
+2. Generalize specific equations and specific labels (e.g., instead of "triangle ABC" or "f(x) = x^2 - 1", use "the given triangle" or "the target polynomial").
 
 # Output Format (JSON)
 If it is a cognitive failure, output a standard JSON block inside ```json tags. The keys MUST exactly match the schema below. ALL generated content MUST be entirely in English.
@@ -79,10 +80,10 @@ If it is a cognitive failure, output a standard JSON block inside ```json tags. 
 ```json
 {
   "problem_type": "<Abstract mathematical or algorithmic description of the problem category>",
-  "error": "<Diagnose the root strategic or algorithmic failure (e.g., 'Over-reliance on coordinate brute-force')>",
+  "error": "<Diagnose the root strategic or algorithmic failure (e.g., 'Over-reliance on coordinate brute-force without identifying invariants')>",
   "fix": "<The imperative 'Teacher' instruction on what to do instead. Must be highly actionable>",
-  "reasoning_path": "<Abstract reasoning pathway for the correct approach>",
-  "solution_steps": "<Provide 3 abstract steps for the correct approach, e.g., '1. Identify shape 2. Apply theorem 3. Solve system'>",
+  "reasoning_path": "<The high-level theoretical logic or mathematical theorem that justifies the correct approach>",
+  "solution_steps": "<Provide abstract steps as a single numbered string, e.g., '1. Identify symmetric properties 2. Apply generalized theorem 3. Solve the reduced system'>",
   "common_traps": "<Document the deceptive algorithmic 'trap' the agent fell into, serving as a warning>"
 }
 ```
@@ -132,27 +133,38 @@ Full trajectory:
 # Phase 2: Solution hint prompt (only looks at problem, not contaminated by failed trajectory)
 # ------------------------------------------------------------------ #
 _HINT_SYSTEM = """\
-You are a math olympiad coach. A student just failed to solve a problem.
-Given ONLY the problem statement, provide a concise solution hint.
+# Role
+You are an elite Math Olympiad Coach. A student just failed to solve a problem.
+Given ONLY the original problem statement (completely isolated from their flawed trajectory), provide a concise, abstract solution strategy.
 
-OUTPUT FORMAT (your ENTIRE response must be ONLY this):
+# Objective: Absolute De-parameterization (CRITICAL)
+1. You are strictly forbidden from including specific numerical values, precise equations, or problem-specific constants (e.g., "9 columns", "25 segments", "4 quadrants", "75").
+2. Replace ALL specific numbers and specific algebraic expressions with generic mathematical variables (e.g., N columns, K segments, the given polynomial, the target matrix).
 
-[Key_Insight]: the core mathematical idea, theorem, or technique needed
-[Approach]: brief 2-3 step strategy (numbered, e.g. 1. do X  2. do Y)
-[Common_Pitfall]: the most likely mistake to avoid
+# Output Format (JSON)
+You MUST output a standard JSON block inside ```json tags. The keys must exactly match the schema below. ALL content must be entirely in English.
 
-EXAMPLE:
-[Key_Insight]: Use perpendicular bisector — |z-a|=|z-b| defines a line, then check tangency with circle
-[Approach]: 1. Simplify second equation to a linear constraint  2. Apply point-to-line distance formula  3. Solve |distance| = radius for both ± cases
-[Common_Pitfall]: Missing the second tangent case (distance = −radius)
+```json
+{
+  "key_insight": "<The core abstract mathematical idea, theorem, or structural technique needed to unlock the problem>",
+  "approach": [
+    "<Step 1: Abstract action, e.g., 'Identify the symmetric properties of the given system'>",
+    "<Step 2: Abstract action, e.g., 'Apply Vieta's formulas to establish bounds'>",
+    "<Step 3: Abstract action, e.g., 'Solve the reduced system of equations'>"
+  ],
+  "common_pitfall": "<The most likely strategic mistake, blind spot, or algorithmic trap a student might fall into>"
+}
+```
 
-Do NOT give the full solution. Output ONLY the three lines above."""
+# Execution Constraints
+- Do NOT provide the full mathematical solution or the final integer answer.
+- Output ONLY the requested JSON block. No pleasantries, no markdown other than the json block."""
 
 _HINT_USER = """\
 Problem: {problem}
 
-This is a competition math problem. The answer is an integer from 0-999.
-Provide a concise hint focusing on the KEY mathematical insight."""
+This is an AIME-level competition math problem.
+Provide the abstract JSON hint focusing strictly on the generic mathematical strategy."""
 
 
 class AnalyzerAgent(BaseAgent):
@@ -473,7 +485,7 @@ class AnalyzerAgent(BaseAgent):
         n_steps: int,
         extra_context: str = "",
     ) -> dict:
-        """Distill the full trajectory into structured semantic memory (JSON format)."""
+        """Distill the full trajectory into structured semantic memory (JSON or Markdown)."""
         import json as _json
 
         trajectory = "\n\n".join(f"Step {i+1}:\n{s.render()}" for i, s in enumerate(steps))
@@ -497,16 +509,30 @@ class AnalyzerAgent(BaseAgent):
         print(f"  [Analyzer] LLM response length: {len(response)} chars", flush=True)
         print(f"  [Analyzer] LLM raw response (first 500 chars):\n{response[:500]}", flush=True)
 
-        # Parse JSON output
+        # Try JSON first (```json block or bare JSON), then fall back to Markdown
+        outer = None
         clean = response.strip()
-        if clean.startswith("```"):
-            clean = re.sub(r"^```[a-z]*\n?", "", clean)
-            clean = re.sub(r"\n?```$", "", clean.strip())
-
-        try:
-            outer = _json.loads(clean)
-        except _json.JSONDecodeError as exc:
-            print(f"  [Analyzer] ✗ JSON parse failed: {exc}", flush=True)
+        m = re.search(r"```json\s*(.*?)\s*```", clean, re.DOTALL)
+        if m:
+            try:
+                outer = _json.loads(m.group(1))
+            except _json.JSONDecodeError:
+                pass
+        if outer is None:
+            bare = re.sub(r"^```[a-z]*\n?", "", clean)
+            bare = re.sub(r"\n?```$", "", bare.strip())
+            if bare.startswith("{"):
+                try:
+                    outer = _json.loads(bare)
+                except _json.JSONDecodeError:
+                    pass
+        if outer is None:
+            # Markdown fallback: [Problem_Type]: ... [Error]: ... etc.
+            parsed_md = self._parse_markdown(response)
+            if "error" not in parsed_md:
+                outer = parsed_md
+        if outer is None:
+            print(f"  [Analyzer] ✗ Both JSON and Markdown parse failed", flush=True)
             return {"skip": True, "error": "parse_failed"}
 
         # Handle discard signal
@@ -532,9 +558,9 @@ class AnalyzerAgent(BaseAgent):
         }
 
     def _generate_hint(self, problem: str) -> Optional[dict]:
-        """Phase 2：GLM 只看题目，独立生成解题思路提示（不受失败轨迹影响）。
+        """Phase 2: GLM sees only the problem statement, generates abstract solution hint.
 
-        返回包含 key_insight / approach / common_pitfall 的 dict，或 None（失败时）。
+        Returns dict with key_insight / approach (list) / common_pitfall, or None on failure.
         """
         user_msg = _HINT_USER.format(problem=problem)
         try:
@@ -542,24 +568,60 @@ class AnalyzerAgent(BaseAgent):
                 system=_HINT_SYSTEM,
                 user=user_msg,
                 temperature=0.0,
-                max_tokens=200,
+                max_tokens=400,
                 extra_body={"thinking": {"type": "disabled"}},
             )
         except Exception as exc:
-            print(f"  [Analyzer] ⚠️ Phase 2 LLM 调用失败: {exc}", flush=True)
+            print(f"  [Analyzer] ⚠️ Phase 2 LLM call failed: {exc}", flush=True)
             return None
 
-        parsed = self._parse_markdown(response)
-        required = ["key_insight", "approach"]
-        if "error" in parsed or not all(f in parsed for f in required):
-            print(f"  [Analyzer] ⚠️ Phase 2 解析失败，跳过 hint", flush=True)
+        parsed = self._try_parse_hint(response)
+        if not parsed:
+            print(f"  [Analyzer] ⚠️ Phase 2 parse failed, skipping hint", flush=True)
             return None
+
+        required = ["key_insight", "approach"]
+        if not all(parsed.get(f) for f in required):
+            print(f"  [Analyzer] ⚠️ Phase 2 missing required fields, skipping hint", flush=True)
+            return None
+
+        # Ensure approach is a list
+        approach = parsed["approach"]
+        if not isinstance(approach, list):
+            approach = [approach]
 
         return {
-            "key_insight": parsed.get("key_insight", ""),
-            "approach": parsed.get("approach", ""),
+            "key_insight":    parsed.get("key_insight", ""),
+            "approach":       approach,
             "common_pitfall": parsed.get("common_pitfall", ""),
         }
+
+    def _try_parse_hint(self, response: str) -> Optional[dict]:
+        """Try JSON first, fall back to Markdown. Field names must match:
+        key_insight / approach / common_pitfall
+        """
+        import json as _json
+
+        # --- Try JSON (```json block or bare JSON) ---
+        clean = response.strip()
+        m = re.search(r"```json\s*(.*?)\s*```", clean, re.DOTALL)
+        if m:
+            try:
+                return _json.loads(m.group(1))
+            except _json.JSONDecodeError:
+                pass
+        elif clean.startswith("{"):
+            try:
+                return _json.loads(clean)
+            except _json.JSONDecodeError:
+                pass
+
+        # --- Fall back to Markdown [Key]: value format ---
+        parsed = self._parse_markdown(response)
+        if "error" not in parsed and "key_insight" in parsed:
+            return parsed
+
+        return None
 
     # ------------------------------------------------------------------ #
     # 成功路径
