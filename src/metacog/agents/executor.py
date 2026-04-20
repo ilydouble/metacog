@@ -44,12 +44,30 @@ class VerboseAgent(DefaultAgent):
         for action in actions:
             cmd = action.get("command", "")
             print(f">>> Execute command: {cmd[:300]}", flush=True)
+
         observations = super().execute_actions(message)
+
+        # Hard Truncation to prevent context explosion
+        MAX_OUTPUT_LENGTH = 2000
         for obs in observations:
             output = obs.get("extra", {}).get("raw_output", "") or obs.get("content", "")
             if output:
+                # 1. Print preview to console
                 preview = output[:400] if len(output) <= 400 else output[:400] + "\n...(truncated)"
                 print(f"<<< Execution result:\n{preview}", flush=True)
+
+                # 2. Hard truncate the actual content sent back to the LLM
+                if len(output) > MAX_OUTPUT_LENGTH:
+                    half = MAX_OUTPUT_LENGTH // 2
+                    truncated_output = output[:half] + f"\n\n...[TRUNCATED {len(output) - MAX_OUTPUT_LENGTH} CHARS]...\n\n" + output[-half:]
+
+                    # Overwrite the content that goes into the trajectory/context
+                    if "content" in obs:
+                        # Sometimes content is wrapped in observation template, so we replace the exact raw output
+                        obs["content"] = obs["content"].replace(output, truncated_output)
+                    if "raw_output" in obs.get("extra", {}):
+                        obs["extra"]["raw_output"] = truncated_output
+
         return observations
 
 from ..bus import Event, EventBus, EventType
@@ -87,6 +105,7 @@ class ExecutorAgent(BaseAgent):
         skill_top_k: int = 3,  # How many skills to retrieve
         episodic_memory = None,  # EpisodicMemory instance (episodic memory)
         case_top_k: int = 1,  # How many success cases to retrieve
+        ontology_memory = None,  # Pre-loaded mathematical ontology vector DB (MemUClient)
     ) -> None:
         super().__init__(model, bus)
         self.scaffold = scaffold
@@ -100,6 +119,7 @@ class ExecutorAgent(BaseAgent):
         self.skill_top_k = skill_top_k  # Control how many skills to inject
         self.episodic_memory = episodic_memory  # Episodic memory
         self.case_top_k = case_top_k  # Control how many success cases to inject
+        self.ontology_memory = ontology_memory  # Mathematical ontology vector DB
 
     def run_problem(self, problem_data: dict) -> dict:
         """Run a single problem, return result dict, and publish TrajectoryEvent."""
@@ -208,7 +228,8 @@ class ExecutorAgent(BaseAgent):
                 print(f"  [Executor] ⚠️  Injecting all skills (consider enabling procedural memory)", flush=True)
 
         # 3. Episodic memory retrieval (success cases)
-        if self.episodic_memory:
+        inject_episodic_flag = self.scaffold.get("inject_episodic_memory", True)
+        if self.episodic_memory and inject_episodic_flag:
             try:
                 similar_cases = self.episodic_memory.search_similar_cases(
                     query=problem,
@@ -231,6 +252,34 @@ class ExecutorAgent(BaseAgent):
                     print(f"  [Executor] Episodic memory: no sufficiently similar cases (threshold 40%), skipping injection", flush=True)
             except Exception as exc:
                 print(f"  [Executor] Episodic memory retrieval failed: {exc}", flush=True)
+
+        # 4. Ontology injection (Knowledge Graph map)
+        if self.ontology_memory and self.scaffold.get("inject_ontology", False):
+            try:
+                # Retrieve the most relevant nodes from the specialized ontology vector DB
+                retrieved_nodes = self.ontology_memory.search(
+                    query=problem,
+                    top_k=2  # Just get the top 1 or 2 most relevant problem types
+                )
+
+                # Tight similarity threshold to ensure high relevance
+                retrieved_nodes = [m for m in retrieved_nodes if m.distance <= 0.65]
+
+                if retrieved_nodes:
+                    ontology_injection = "\n## 🧠 Mathematical Knowledge Graph (Ontology)\n"
+                    ontology_injection += "DISCLAIMER: The following is NOT a golden standard. It is just a reference map of abstract mathematical domains, problem types, and corresponding techniques extracted from past cases. Use this structural map only to inspire your solution. If the problem is simple, straightforward, or doesn't fit the map, you MUST solve it directly without adhering to this map:\n\n"
+
+                    for idx, node in enumerate(retrieved_nodes, 1):
+                        ontology_injection += f"### Reference Node {idx} (Relevance: {1 - node.distance:.0%})\n"
+                        ontology_injection += f"{node.content}\n"
+
+                    system_template = system_template.rstrip() + "\n\n" + ontology_injection
+                    print(f"  [Executor] Injected {len(retrieved_nodes)} relevant ontology nodes", flush=True)
+                else:
+                    print(f"  [Executor] Ontology map: no relevant nodes found for this problem, skipping injection", flush=True)
+
+            except Exception as exc:
+                print(f"  [Executor] Ontology injection failed: {exc}", flush=True)
 
         start_time = time.time()
         traj_path = (self.output_dir / f"{problem_id}.traj.json") if self.output_dir else None

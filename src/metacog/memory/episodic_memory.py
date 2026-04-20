@@ -109,6 +109,7 @@ class EpisodicMemory:
             "problem_type": problem_type,
             "key_insight":  key_insight,
             "tags":         tags,
+            "approach":     solution_steps,  # Include approach in metadata
             "answer":       answer,
             "type":         "success_case",
             "num_steps":    len(solution_steps),

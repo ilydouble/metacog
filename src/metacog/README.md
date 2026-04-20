@@ -4,9 +4,11 @@
 
 MetaCog 是一个**多智能体事件驱动系统**，让 AI 智能体在批量解题过程中**自我学习和进化**。
 
-它通过**双通道学习机制**实现持续改进：
-- **失败通道**：提取教训 → 结构化记忆 → 注入 prompt
-- **成功通道**：提取技术模式 → 生成 Python skill → 可直接执行
+它通过**多维度学习机制**实现持续改进：
+- **失败教训（Semantic Memory）**：AnalyzerAgent 提取失败痛点 → 向量化存入 memU → 下题 RAG 动态注入
+- **成功经验（Episodic Memory）**：SuccessAnalyzer 提取成功轨迹与解题套路 → 向量化存入 memU → 备用于知识图谱或案例参考
+- **程序技能（Procedural Memory）**：SkillAgent 提取高频成功模式 → 生成 Python 代码 → 下题直接 `import` 执行
+- **知识图谱（Ontology / Graph RAG）**：离线提取所有成功经验为结构化本体 → 推理时在线动态切片注入（零干扰参考）
 
 ---
 
@@ -25,79 +27,69 @@ class EventType:
     SKILL_CREATED    = "skill_created"     # SkillAgent 生成新技能
 ```
 
-### 四个核心智能体
+### 核心多智能体矩阵
 
 #### 1. ExecutorAgent（解题执行者）
 
 **职责**：实际解题并发布轨迹事件
 
 **工作流程**：
-1. 从 `MemoryStore` 加载累积的记忆（失败教训）
-2. 从 `SkillRegistry` 加载可用技能列表
-3. 将记忆和技能描述注入到 system prompt
-4. 设置 `PYTHONPATH`，让 agent 可以直接 `import` 已生成的 skill 模块
-5. 运行 `DefaultAgent` 解题
-6. 发布 `TRAJECTORY` 事件，触发后续分析
+1. 接收新题，从多种记忆体（memU语义教训、情景案例、离线知识图谱、技能库）进行动态检索和裁剪。
+2. 将最匹配的子图、失败教训和代码技能注入到 system prompt 中（带有柔性降级提示词）。
+3. 运行 `DefaultAgent` 解题（支持 PoT 程序辅助运算与实时监控）。
+4. 发布 `TRAJECTORY` 事件，触发后续分析。
 
 **关键代码位置**：`src/metacog/agents/executor.py`
 
 ---
 
-#### 2. AnalyzerAgent（轨迹分析者）
+#### 2. AnalyzerAgent（轨迹痛点分析者）
 
-**职责**：订阅 `TRAJECTORY` 事件，根据解题结果走不同分支
+**职责**：订阅失败的 `TRAJECTORY` 事件，通过教师模型提炼数学错因
 
-##### 失败路径
-1. 将完整轨迹按 `chunk_size`（默认 3 步）分块
-2. 每块调用 LLM 生成一句话摘要
-3. 将所有摘要 + 题目元数据再次喂给 LLM，蒸馏成 1-2 句可执行建议
-4. 发布 `ANALYSIS` 事件
-
-##### 成功路径
-1. 同样分块摘要
-2. 从成功轨迹中提取"用了什么方法"（`technique` + `tags`）
-3. 发布 `SUCCESS_ANALYSIS` 事件
-
-**设计原则**：
-- **上下文受限**：每次 LLM 调用只处理一小块（chunk），避免长上下文
-- **高度精简**：每块只产出一句话摘要；最终蒸馏只产出 1-2 句可执行建议
+**工作流程**：
+1. 将完整失败轨迹按 `chunk_size` 分块并生成一句话摘要（防止长下文注意力丢失）。
+2. 将所有摘要 + 题目元数据喂给教师模型（如 GLM-4.7），要求输出结构化 JSON。
+3. 蒸馏成极度浓缩的 `error_symptom`（病症）和 1-2 句 `remedy`（可执行建议）。
+4. 发布 `ANALYSIS` 事件。
 
 **关键代码位置**：`src/metacog/agents/analyzer.py`
 
 ---
 
-#### 3. MemoryManagerAgent（记忆管理者）
+#### 3. SuccessAnalyzer（成功模式提炼者）
 
-**职责**：订阅 `ANALYSIS` 事件，管理结构化记忆存储
+**职责**：订阅成功的 `TRAJECTORY` 事件，提炼核心解题路径与情景记忆
 
 **工作流程**：
-1. 接收失败分析结果
-2. 检查是否存在相似标签（tags）的记忆
-3. 如果超过阈值 `merge_threshold`（默认 3），调用 LLM 合并记忆
-4. 否则追加新记忆
-5. 保存到 `memories.yaml`（YAML 格式，支持增量追加）
-6. 发布 `MEMORY_UPDATED` 事件
+1. 将完整的成功轨迹精简为高度抽象的解决思路（Approach）和灵光一现（Key Insight）。
+2. 将其转化为标准化的情景记忆（Episodic Memory）并写入 ChromaDB。
+3. 这些记忆既可被下一次解题直接相似检索，更是离线构建全局知识图谱（Ontology）的核心素材。
+4. 发布 `SUCCESS_ANALYSIS` 事件给 SkillAgent。
 
-**记忆格式**：
-```yaml
-version: 1
-memories:
-  - id: mem_001
-    title: "整除问题：避免 sympy.solve"
-    content: "For modular arithmetic, prefer pow(a, -1, m) over sympy.solve()."
-    tags: [modular_arithmetic, sympy]
-    created_at: "2024-01-01T00:00:00"
-```
-
-**关键代码位置**：
-- Agent: `src/metacog/agents/memory_manager.py`
-- Store: `src/metacog/memory/store.py`
+**关键代码位置**：`src/metacog/agents/success_analyzer.py`
 
 ---
 
-#### 4. SkillAgent（技能生成者）
+#### 4. MemoryManagerAgent（语义记忆管理者）
 
-**职责**：订阅 `SUCCESS_ANALYSIS` 事件，积累成功模式并生成可执行 Python skill
+**职责**：订阅 `ANALYSIS` 事件，管理结构化的错误教训（Semantic Memory）
+
+**工作流程**：
+1. 接收失败分析结果（病症和教训）。
+2. 将该教训向量化存入基于 ChromaDB 的 `memU_client` 中，形成持久化的向量知识库。
+3. （保留向后兼容）若触发同 tags 积累，还会保存在 `memories.yaml`。
+4. 发布 `MEMORY_UPDATED` 事件。
+
+**关键代码位置**：
+- Agent: `src/metacog/agents/memory_manager.py`
+- MemUClient: `src/metacog/memory/memu_client.py`
+
+---
+
+#### 5. SkillAgent（程序技能生成者）
+
+**职责**：订阅 `SUCCESS_ANALYSIS` 事件，积累成功模式并生成可执行 Python skill (Procedural Memory)
 
 **工作流程**：
 1. 收到 `SUCCESS_ANALYSIS` 事件，按 `tags` 归组写入 `pattern_buffer`
@@ -130,54 +122,67 @@ def modular_inverse(a: int, m: int) -> int:
 
 ---
 
+#### 6. MemoryEvaluatorAgent（记忆评估清理者）
+
+**职责**：定期盘点 `memU_client` 里的记忆，防止记忆库臃肿退化
+
+**工作流程**：
+1. 每 `eval_interval` 题执行一次。
+2. 调用大模型对最近的记忆使用率和错误率进行评估，清理无用或带有负面影响的教训。
+3. 动态维护高质量的知识密度。
+
+**关键代码位置**：`src/metacog/agents/memory_evaluator.py`
+
+---
+
 ## 🔄 完整工作流程
 
 ```
-题目 1 → ExecutorAgent 解题
+题目 1 → ExecutorAgent 动态检索相关子图/教训并解题
          ↓
-      [失败] → AnalyzerAgent 分析失败原因
+      [失败] → AnalyzerAgent 归纳失败病症与处方
          ↓
-      ANALYSIS 事件 → MemoryManagerAgent 写入记忆
+      ANALYSIS 事件 → MemoryManagerAgent 存入 memU 向量库
          ↓
-      memories.yaml 更新（"避免使用 sympy.solve"）
-         
-题目 2 → ExecutorAgent 解题（注入题目1的记忆）
+      [成功] → SuccessAnalyzer 提取成功特征及 actionable_steps
          ↓
-      [成功] → AnalyzerAgent 提取成功技术
-         ↓
-      SUCCESS_ANALYSIS 事件 → SkillAgent 记录模式
-      
-题目 3、4、5 → 继续成功，使用相同技术
-         ↓
-      SkillAgent: 同组达到3次阈值
-         ↓
-      生成 skill_modular_inverse.py
-         ↓
-      SKILL_CREATED 事件 → 注册到 SkillRegistry
+      SUCCESS_ANALYSIS 事件 → SkillAgent 记录技术模式并存入 Episodic Memory
 
-题目 6+ → ExecutorAgent 可以直接 import skill_modular_inverse
+题目 2、3、4 → 持续迭代，生成新 Python skill / 积累错题本
+
+离线阶段 → python build_ontology.py
+         ↓
+      抽取积累的 Episodic Memory 重新生成 / 更新动态数学本体知识库 (Ontology DB)
+
+题目 N → ExecutorAgent 获得更加精准的 Graph RAG 和 Semantic RAG 辅导
 ```
 
 ---
 
-## 🎯 双通道学习机制
+## 🎯 多维度学习机制
 
-### 失败通道（文字记忆）
+### 失败痛点（Semantic Memory）
 ```
-失败 → 提取教训 → 写入 memories.yaml → 下题注入 system prompt
+失败 → 提取高浓度教训 → 向量化存入 memU → 下题 RAG 精确检索注入
 ```
-- **载体**：结构化 YAML 文件
-- **注入方式**：拼接到 system prompt
-- **优点**：轻量、易读、可人工审核
-- **局限**：依赖 LLM 理解文字描述
+- **载体**：ChromaDB 向量存储
+- **优点**：极速检索，Token 开销小，只对相关错误起作用
+- **局限**：模型是否能读懂教训仍有不确定性
 
-### 成功通道（代码技能）
+### 成功经验（Episodic Memory / Ontology）
 ```
-成功 → 提取技术模式 → 生成 .py 文件 → 下题可 import 执行
+成功 → 提取问题特征及步骤 → 作为情景记忆 → 离线提取为结构化本体库 → 下题精准子图路由
+```
+- **载体**：ChromaDB 图谱向量库 + JSON
+- **优点**：为模型提供高级战术指导（怎么破题，第一步干嘛）
+- **局限**：如果强行注入会限制模型自由发挥（需柔性降级提示词配合）
+
+### 代码技能（Procedural Memory）
+```
+成功 → 提取技术模式 → 同类累计触发 → 生成 .py 文件 → 下题可 import 执行
 ```
 - **载体**：可执行 Python 模块
-- **调用方式**：Agent 通过 `import` 直接调用
-- **优点**：不依赖 prompt 理解，执行确定性高
+- **优点**：不依赖 prompt 理解，执行确定性高，解决 PoT 的能力边界问题
 - **局限**：需要多次同类成功才触发生成
 
 ---
@@ -293,9 +298,9 @@ outputs/metacog_exp1/
 
 ---
 
-## 🆕 最新升级：四大优化全部完成
+## 🆕 最新升级：五大优化全部完成
 
-**已完成四大优化**，专为拯救 Qwen3.5 9B 的数学解题能力设计：
+**已完成五大优化**，专为拯救 Qwen3.5 9B 等开源模型的数学解题能力设计：
 
 ### 优化 1: memU 向量记忆微服务 ⭐
 - **改造前**：加载所有记忆 → 3000 tokens → 9B 模型崩溃
@@ -317,6 +322,15 @@ outputs/metacog_exp1/
 - **改造后**：检测循环立即终止 → 平均 6.2 步
 - **提升**：Token 节省 30-40%，死循环率 ↓ 87%
 
+### 优化 5: 动态数学本体知识图谱 (Graph RAG) ⭐⭐⭐
+- **改造前**：大模型在应对复杂 AIME 题目时，缺乏对题型解法的宏观认知。若全量注入静态知识图谱（包含上百种不相关领域的方法），会导致模型注意力被稀释（Context Dilution），出现强行套路、拿着锤子找钉子的幻觉，极大浪费 Token。
+- **改造后**：
+  1. **条件触发边 (Condition-Aware Edges)**：传统的静态知识图谱缺乏上下文感知能力。我们将边扩展为条件动态边。用教师模型（GLM-4.7）提炼案例时，不仅生成**“可执行步骤”（Actionable Steps）**，还多提取一个**`applicable_when`（触发条件）**。智能体不再随机游走，而是根据解题状态动态匹配触发条件，实现了精准的战术分发。
+  2. **离线向量化建库**：将带操作步骤与触发条件的 `Domain`、`ProblemType` 和 `Technique` 组合成专家手册段落，进行离线向量化建库（`MemUClient`）。
+  3. **严格的在线动态子图检索 (`executor.py`)**：新题到来时，不再全量注入。直接将新题送入图谱向量库匹配。设定严格阈值（距离 ≤ 0.65），**宁缺毋滥**。命中后，仅切割提取出排名前 1-2 的**微型子图**（两三行，且附带触发条件验证）注入。若未命中则跳过，实现**零干扰**。
+  4. **柔性降级提示词 (Disclaimer)**：注入时显式告知模型“图谱仅供参考”，对简单题不要生搬硬套。彻底解绑了图谱提取与情景记忆流，实现完美解耦和模块化独立运行。
+- **提升**：模型同时获得了精准的“战术微操指南”、“触发条件限制”和零干扰的上下文环境，解题准确率和推理效率进一步得到双重保证。
+
 ### 快速开始
 
 ```bash
@@ -334,11 +348,16 @@ python scripts/run_math_test_metacog.py \
   --data-source aime25 \
   --max-instances 10 \
   --output outputs/metacog_full
+
+# 5. 生成本体图谱及向量库 (Graph RAG 离线提取)
+python scripts/build_ontology.py outputs/metacog_full
 ```
 
 ### 关键参数
 
 - **`rag_top_k=2`**：控制每道题注入多少条记忆（1-3 推荐）
+- **`inject_episodic_memory=True`**：开启情景记忆（过往错题经验）注入
+- **`inject_ontology=True`**：开启知识图谱 RAG 在线子图路由注入
 - **`enable_pot=True`**：启用程序辅助反思
 - **`enable_loop_detection=True`**：启用死循环检测
 - 详见：`MEMU_UPGRADE.md`、`POT_UPGRADE.md` 和 `MONITOR_UPGRADE.md`
@@ -362,6 +381,8 @@ python scripts/run_math_test_metacog.py \
 ### 核心实现
 - **事件总线**：`bus.py`
 - **memU 客户端**：`memory/memu_client.py` ⭐
+- **本体图谱提取**：`../../scripts/build_ontology.py` ⭐⭐⭐
+- **图谱子图注入 (Graph RAG)**：`agents/executor.py` ⭐⭐⭐
 - **PoT 反思器**：`agents/pot_reflector.py` ⭐
 - **执行监控器**：`agents/execution_monitor.py` ⭐
 - **轨迹分析器**：`agents/trajectory_analyzer.py` ⭐

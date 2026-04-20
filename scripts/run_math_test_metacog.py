@@ -181,11 +181,11 @@ def main(
 
     # scaffold（agent 段 → --scaffold 文件 → 内置默认值，优先级从低到高）
     scaffold_data: dict = {"system_template": DEFAULT_SYSTEM, "instance_template": DEFAULT_INSTANCE,
-                           "step_limit": 10, "cost_limit": 2.0}
+                           "step_limit": 10, "cost_limit": 2.0, "inject_episodic_memory": True, "inject_ontology": False}
     scaffold_data.update(config_data.get("agent", {}))
     if scaffold and scaffold.exists():
         sc = yaml.safe_load(scaffold.read_text()) or {}
-        for k in ("system_template", "instance_template", "step_limit", "cost_limit"):
+        for k in ("system_template", "instance_template", "step_limit", "cost_limit", "inject_episodic_memory", "inject_ontology"):
             if k in sc:
                 scaffold_data[k] = sc[k]
         console.print(f"[green]✓ scaffold: {scaffold}[/green]")
@@ -341,6 +341,26 @@ def main(
     bus = EventBus()
 
     # ExecutorAgent：传入三层记忆 + RAG Top-K 参数
+    inject_episodic = scaffold_data.get("inject_episodic_memory", True)
+    inject_ontology = scaffold_data.get("inject_ontology", False)
+
+    # Decide whether to pass episodic_memory
+    pass_episodic = None
+    if not no_episodic:
+        pass_episodic = episodic_memory
+
+    ontology_memory = None
+    if inject_ontology:
+        ontology_db_path = Path("outputs/ontology/memu_db")
+        if ontology_db_path.exists():
+            ontology_memory = MemUClient(
+                collection_name="ontology_memory",
+                persist_dir=ontology_db_path
+            )
+            console.print(f"[cyan]Loaded ontology vector DB for direct RAG injection ({ontology_memory.count()} nodes)[/cyan]")
+        else:
+            console.print("[yellow]inject_ontology is True but outputs/ontology/memu_db not found[/yellow]")
+
     executor = ExecutorAgent(
         litellm_model,
         bus,
@@ -353,8 +373,9 @@ def main(
         rag_top_k=2,
         procedural_memory=procedural_memory,                        # 🔥 程序记忆（技能）
         skill_top_k=3,
-        episodic_memory=None if no_episodic else episodic_memory,  # 🔥 情景记忆（消融可禁用）
-        case_top_k=1
+        episodic_memory=pass_episodic,  # Passed for both direct injection and ontology subgraph routing
+        case_top_k=1,
+        ontology_memory=ontology_memory,
     )
 
     # ── 日志：Solver 完成，Analyzer 即将开始（注册在 AnalyzerAgent 之前）

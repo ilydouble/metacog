@@ -51,6 +51,8 @@ model:
 agent:
   step_limit: 10      # 最大步数限制
   cost_limit: 100    # 成本限制 (美元)
+  inject_episodic_memory: false  # 禁用情景记忆的直接注入（为离线本体图谱注入让路），但后台依然会提取
+  inject_ontology: true          # 开启：在推理时注入本体图谱
 
 # 数据集配置
 dataset:
