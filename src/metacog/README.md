@@ -196,17 +196,26 @@ src/metacog/
 ├── bus.py                       # 事件总线
 ├── agents/
 │   ├── base.py                  # BaseAgent 基类
-│   ├── executor.py              # ExecutorAgent（解题）
-│   ├── analyzer.py              # AnalyzerAgent（轨迹分析）
-│   ├── memory_manager.py        # MemoryManagerAgent（记忆管理）
-│   └── skill_agent.py           # SkillAgent（技能生成）
+│   ├── executor.py              # ExecutorAgent（解题 + Graph RAG 检索）
+│   ├── analyzer.py              # AnalyzerAgent（轨迹分析 + PoT 验证）
+│   ├── memory_manager.py        # MemoryManagerAgent（写入 memU 语义层）
+│   ├── skill_agent.py           # SkillAgent（程序技能生成）
+│   ├── success_analyzer.py      # SuccessAnalyzer（情景记忆写入）
+│   ├── memory_evaluator.py      # MemoryEvaluatorAgent（记忆质量清理）
+│   ├── failure_router.py        # FailureRouter（操作性失误过滤）
+│   ├── pot_sandbox_wrapper.py   # PoT 报错反思包装器
+│   ├── pot_reflector.py         # PoT 验证代码生成器
+│   └── trajectory_analyzer.py  # 死循环检测
 ├── memory/
-│   └── store.py                 # MemoryStore（YAML 存储）
+│   ├── store.py                 # MemoryStore（YAML 人类可读备份）
+│   ├── memu_client.py           # memU 向量库客户端（ChromaDB）
+│   ├── episodic_memory.py       # 情景记忆（成功案例向量存储）
+│   └── procedural_memory.py     # 程序记忆（Skill 元数据向量存储）
 └── skills/
     ├── base.py                  # StructuredSkill 基类
     ├── composite.py             # CompositionalSkill（组合技能）
     ├── registry.py              # SkillRegistry（技能注册表）
-    └── math/                    # 预置的数学技能（seed skills）
+    └── math/                    # 预置数学技能（seed skills）
 ```
 
 ---
@@ -360,34 +369,20 @@ python scripts/build_ontology.py outputs/metacog_full
 - **`inject_ontology=True`**：开启知识图谱 RAG 在线子图路由注入
 - **`enable_pot=True`**：启用程序辅助反思
 - **`enable_loop_detection=True`**：启用死循环检测
-- 详见：`MEMU_UPGRADE.md`、`POT_UPGRADE.md` 和 `MONITOR_UPGRADE.md`
 
 ---
 
 ## 📚 相关文档
 
-### 升级文档
-- **memU 升级文档**：`MEMU_UPGRADE.md` ⭐ 向量记忆微服务
-- **PoT 升级文档**：`POT_UPGRADE.md` ⭐ 程序辅助反思
-- **Monitor 升级文档**：`MONITOR_UPGRADE.md` ⭐ 智能监控和刹车
-- **完整集成报告**：`../../MEMU_INTEGRATION.md`
-- **Monitor 集成总结**：`../../MONITOR_INTEGRATION_SUMMARY.md`
-
-### 测试脚本
-- **memU 测试**：`../../scripts/test_memu.py`
-- **PoT 测试**：`../../scripts/test_pot.py`
-- **运行脚本**：`../../scripts/run_math_test_metacog.py`
-
 ### 核心实现
 - **事件总线**：`bus.py`
 - **memU 客户端**：`memory/memu_client.py` ⭐
-- **本体图谱提取**：`../../scripts/build_ontology.py` ⭐⭐⭐
+- **本体图谱提取（离线）**：`../../scripts/build_ontology.py` ⭐⭐⭐
 - **图谱子图注入 (Graph RAG)**：`agents/executor.py` ⭐⭐⭐
 - **PoT 反思器**：`agents/pot_reflector.py` ⭐
-- **执行监控器**：`agents/execution_monitor.py` ⭐
 - **轨迹分析器**：`agents/trajectory_analyzer.py` ⭐
 - **记忆存储**：`memory/store.py`
 - **技能注册**：`skills/registry.py`
 
 ### 其他
-- **项目总览**：`../../README.md`
+- **项目总览**：`../../docs/README.md`

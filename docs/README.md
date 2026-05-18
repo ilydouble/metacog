@@ -373,11 +373,12 @@ Qwen 9B / LM Studio        GLM-4.7 / 智谱 API
 每道题的实际解题者：
 
 1. 用当前题目文本去三层记忆做 Top-K 语义检索
-2. 将检索结果拼入 system prompt（语义记忆 + 技能描述 + 成功案例）
-3. 设置 `PYTHONPATH` 包含 `<output>/skills/`，让 agent 可以 `import` 已生成的 skill
-4. 通过 `PotSandboxWrapper` 包装 `DefaultAgent`，执行报错时自动注入反思 prompt
-5. 解题结束后记录各层记忆的使用统计（成功/失败），用于记忆质量评分
-6. 发布 `TRAJECTORY` 事件
+2. 从离线知识图谱向量库（Graph RAG）做子图路由检索，设严格阈值（距离 ≤ 0.65），宁缺毋滥，命中后仅注入排名前 1-2 的**条件触发微型子图**（含 `applicable_when` 触发条件 + `actionable_steps` 可执行步骤）
+3. 将所有检索结果拼入 system prompt（语义记忆 + 技能描述 + 成功案例 + 子图），并附**柔性降级提示词**，告知模型图谱仅供参考，简单题直接求解
+4. 设置 `PYTHONPATH` 包含 `<output>/skills/`，让 agent 可以 `import` 已生成的 skill
+5. 通过 `PotSandboxWrapper` 包装 `DefaultAgent`，执行报错时自动注入反思 prompt；对长输出做**硬截断**（保留前后各 1000 字符），防止上下文爆炸
+6. 解题结束后记录各层记忆的使用统计（成功/失败），用于记忆质量评分
+7. 发布 `TRAJECTORY` 事件
 
 #### AnalyzerAgent（`src/metacog/agents/analyzer.py`）
 
@@ -509,7 +510,23 @@ outputs/metacog/
 | FailureRouter 过滤操作性失误，只学逻辑错误 | 教师模型需要云端 API（智谱 GLM），本地模型降级 |
 | PoT 验证：用代码增强记忆的 actionable_advice | 情景记忆类比效果依赖相似题目的积累量 |
 | MemoryEvaluator 定期清理，防止记忆噪声积累 | |
+| Graph RAG 条件触发边，宁缺毋滥零干扰注入 | |
 | 消融实验参数支持，便于对比各记忆层贡献 | |
+
+### Graph RAG 离线知识图谱（可选增强）
+
+在积累一定成功案例后，可离线运行 `build_ontology.py` 提取结构化数学本体：
+
+```bash
+# 从已有实验输出中提取本体知识图谱
+python scripts/build_ontology.py outputs/metacog_aime25
+```
+
+该脚本用教师模型（GLM-4.7）将情景记忆蒸馏为三层本体节点（`Domain → ProblemType → Technique`），每个 `Technique` 节点包含：
+- **`actionable_steps`**：解题操作步骤
+- **`applicable_when`**：触发条件（Condition-Aware Edges）
+
+节点向量化后存入独立的 ChromaDB，供后续实验中 ExecutorAgent 在线路由检索。
 
 ---
 
@@ -535,38 +552,40 @@ metacog/
 │   ├── run_math_test_evolve.py  # 方法二：Evolve
 │   ├── run_math_test_recreate.py# 方法三：ReCreate
 │   ├── run_math_test_metacog.py # 方法四：Metacog
-│   ├── analyze_failures.py      # 结果分析工具
+│   ├── build_ontology.py        # 离线提取知识图谱（Graph RAG）
+│   ├── analyze_failures.py      # 结果失败案例分析
+│   ├── compare_results.py       # 多方法结果横向对比
+│   ├── dump_memories.py         # 导出 ChromaDB 记忆内容
 │   ├── configs/
-│   │   └── math_test_config.yaml# 配置文件示例
+│   │   └── math_test_config.yaml# 模型与数据集配置
 │   ├── evolve_utils/            # Evolve/ReCreate 共用工具
 │   │   ├── evolution.py         # 核心进化逻辑
 │   │   ├── scaffold_ops.py      # Scaffold 版本管理
 │   │   ├── stats.py             # 统计工具
 │   │   ├── trajectory.py        # 轨迹解析工具
 │   │   └── utils.py             # 通用工具
-│   └── utils/
+│   └── utils/                   # 四个方法共享的基础工具
+│       ├── dataset.py           # 统一数据集加载（JSONL + JSON 数组）
 │       ├── answer_extraction.py # 从输出中提取最终答案
 │       └── evaluation.py        # 答案比对与正确率统计
 ├── src/
 │   ├── metacog/                 # 方法四核心库
 │   │   ├── bus.py               # 事件总线
 │   │   ├── agents/
-│   │   │   ├── base.py          # BaseAgent 基类
-│   │   │   ├── executor.py      # 解题 Agent（三层记忆 Top-K 检索）
-│   │   │   ├── analyzer.py      # 轨迹分析 Agent（PoT + 死循环检测）
-│   │   │   ├── memory_manager.py# 记忆管理 Agent（写入 memU 语义层）
-│   │   │   ├── skill_agent.py   # 技能生成 Agent
+│   │   │   ├── base.py              # BaseAgent 基类
+│   │   │   ├── executor.py          # 解题 Agent（三层记忆 + Graph RAG 检索）
+│   │   │   ├── analyzer.py          # 轨迹分析 Agent（PoT + 死循环检测）
+│   │   │   ├── memory_manager.py    # 记忆管理 Agent（写入 memU 语义层）
+│   │   │   ├── skill_agent.py       # 技能生成 Agent
 │   │   │   ├── success_analyzer.py  # 成功案例分析（写入情景记忆）
 │   │   │   ├── memory_evaluator.py  # 记忆质量评估与清理
 │   │   │   ├── failure_router.py    # 操作性失误过滤（阻止 SyntaxError 等入库）
 │   │   │   ├── pot_sandbox_wrapper.py # PoT 报错反思包装器
 │   │   │   ├── pot_reflector.py     # PoT 代码验证生成器
-│   │   │   ├── trajectory_analyzer.py# 死循环检测
-│   │   │   ├── execution_monitor.py # 执行监控器
-│   │   │   └── monitored_agent.py   # 带监控的 Agent 包装器
+│   │   │   └── trajectory_analyzer.py # 死循环检测
 │   │   ├── memory/
-│   │   │   ├── store.py         # YAML memories.yaml 读写（人类可读备份）
-│   │   │   ├── memu_client.py   # memU 向量库客户端（基于 ChromaDB）
+│   │   │   ├── store.py             # YAML memories.yaml 读写（人类可读备份）
+│   │   │   ├── memu_client.py       # memU 向量库客户端（基于 ChromaDB）
 │   │   │   ├── episodic_memory.py   # 情景记忆（成功案例向量存储）
 │   │   │   └── procedural_memory.py # 程序记忆（Skill 元数据向量存储）
 │   │   └── skills/
@@ -591,7 +610,6 @@ metacog/
 │           ├── scaffold_editor.py
 │           ├── search_memory.py
 │           └── write_memory.py
-├── tests/                       # 单元测试
 └── outputs/                     # 实验结果（git-ignored）
 ```
 
