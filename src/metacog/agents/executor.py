@@ -333,6 +333,8 @@ class ExecutorAgent(BaseAgent):
                             break
 
             # Fallback 2: scan tool (bash execution result) messages, look for COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT signal
+            # Logic aligned with mini-swe-agent local.py: take ALL lines after the signal as submission,
+            # accept if it contains any digit OR the word "ANSWER" (same criteria as mini-swe-agent).
             if not extracted_answer:
                 for msg in reversed(agent.messages):
                     if msg.get("role") != "tool":
@@ -341,15 +343,12 @@ class ExecutorAgent(BaseAgent):
                     lines = raw.splitlines()
                     for i, line in enumerate(lines):
                         if line.strip() == "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT":
-                            # Look down for the first non-empty line containing numbers
-                            for j in range(i + 1, len(lines)):
-                                candidate_line = lines[j].strip()
-                                if candidate_line:
-                                    candidate = normalize_answer(candidate_line)
-                                    if candidate and any(c.isdigit() for c in candidate):
-                                        extracted_answer = candidate
-                                        break
-                            if extracted_answer:
+                            # Take ALL lines after the signal, same as mini-swe-agent
+                            submission = "\n".join(lines[i + 1:]).strip()
+                            if not submission:
+                                continue
+                            if any(c.isdigit() for c in submission) or "ANSWER" in submission:
+                                extracted_answer = normalize_answer(submission)
                                 break
                     if extracted_answer:
                         break
