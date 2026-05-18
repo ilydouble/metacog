@@ -46,6 +46,8 @@ datasets/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-
-./src/mini-swe-agent
+.github
 .zip
+
+# 第三方依赖（本地管理，不纳入版本控制）
+src/mini-swe-agent/
