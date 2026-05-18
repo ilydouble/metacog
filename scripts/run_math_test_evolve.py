@@ -53,6 +53,7 @@ from minisweagent.environments.local import LocalEnvironment
 from minisweagent.models.litellm_model import LitellmModel
 
 from utils.answer_extraction import extract_final_answer, normalize_answer
+from utils.dataset import load_dataset
 from utils.evaluation import compare_answers, compute_accuracy
 from evolve_utils import safe_load_yaml
 
@@ -432,22 +433,6 @@ def evolve_scaffold(
 # ============================================================
 # 数据加载 & 结果保存（复用基线逻辑）
 # ============================================================
-
-def load_dataset(data_source: str, base_path: str, max_instances: int | None = None) -> list[dict]:
-    data_file = Path(base_path) / f"{data_source}.json"
-    if not data_file.exists():
-        raise FileNotFoundError(f"数据文件不存在: {data_file}")
-    problems = []
-    with open(data_file) as f:
-        for i, line in enumerate(f):
-            if max_instances is not None and i >= max_instances:
-                break
-            try:
-                problems.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
-    return problems
-
 
 def save_round_results(results: list[dict], round_dir: Path, round_idx: int, scaffold_version: int):
     """保存单轮结果。"""

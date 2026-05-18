@@ -59,6 +59,7 @@ from recreate_agent.adapters.base import UnifiedInstance, UnifiedResult
 from recreate_agent.adapters.math_adapter import MathAdapter
 
 from utils.answer_extraction import extract_final_answer, normalize_answer
+from utils.dataset import load_dataset
 from utils.evaluation import compare_answers, compute_accuracy
 from evolve_utils import safe_load_yaml
 from evolve_utils.scaffold_ops import init_agent_memory, load_scaffold
@@ -203,23 +204,6 @@ def update_current_symlink(workspace: Path, version_name: str):
 
 
 # ── 数据加载 ─────────────────────────────────────────────────────────────────
-
-def load_dataset(data_source: str, base_path: str, max_instances: int | None = None) -> list[dict]:
-    """加载数学题目数据集，返回原始 dict 列表。"""
-    data_file = Path(base_path) / f"{data_source}.json"
-    if not data_file.exists():
-        raise FileNotFoundError(f"数据文件不存在: {data_file}")
-    problems = []
-    with open(data_file) as f:
-        for i, line in enumerate(f):
-            if max_instances is not None and i >= max_instances:
-                break
-            try:
-                problems.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
-    return problems
-
 
 def problem_to_unified_instance(problem: dict, data_source: str, orig_idx: int) -> UnifiedInstance:
     """把原始 dict 转为 UnifiedInstance。"""

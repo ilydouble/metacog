@@ -54,6 +54,7 @@ from metacog.agents.analyzer import AnalyzerAgent
 from metacog.agents.memory_manager import MemoryManagerAgent
 from metacog.agents.skill_agent import SkillAgent
 
+from utils.dataset import load_dataset
 from utils.evaluation import compute_accuracy
 
 app = typer.Typer()
@@ -119,30 +120,7 @@ Now please solve the problem."""
 # 数据加载（复用 run_math_test_evolve 的逻辑）
 # ------------------------------------------------------------------ #
 
-def load_dataset(data_source: str, base_path: str, max_instances: int, start: int = 0) -> list[dict]:
-    data_file = Path(base_path) / f"{data_source}.json"
-    if not data_file.exists():
-        raise FileNotFoundError(f"数据文件不存在: {data_file}")
-    problems = []
-    with open(data_file) as f:
-        for line in f:
-            try:
-                problems.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
-    # 如果按行解析为空，尝试整体解析（JSON 数组格式）
-    if not problems:
-        content = data_file.read_text()
-        data = json.loads(content)
-        if isinstance(data, list):
-            problems = data
-        elif isinstance(data, dict):
-            problems = [data]
-    # 应用 start offset 和 max_instances
-    problems = problems[start:]
-    if max_instances:
-        problems = problems[:max_instances]
-    return problems
+
 
 
 # ------------------------------------------------------------------ #

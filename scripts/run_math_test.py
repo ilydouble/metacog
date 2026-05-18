@@ -35,6 +35,7 @@ from minisweagent.environments.local import LocalEnvironment
 from minisweagent.models.litellm_model import LitellmModel
 
 from utils.answer_extraction import extract_final_answer, normalize_answer
+from utils.dataset import load_dataset
 from utils.evaluation import compare_answers, compute_accuracy
 
 app = typer.Typer()
@@ -176,36 +177,6 @@ def load_config(config_path: Path) -> dict:
     """加载配置文件"""
     with open(config_path) as f:
         return yaml.safe_load(f)
-
-
-def load_dataset(data_source: str, base_path: str, max_instances: int | None = None) -> list[dict]:
-    """加载数据集
-    
-    Args:
-        data_source: 数据源名称（aime24, aime25, amc23）
-        base_path: 数据集基础路径
-        max_instances: 最大加载数量
-        
-    Returns:
-        问题列表
-    """
-    data_file = Path(base_path) / f"{data_source}.json"
-    
-    if not data_file.exists():
-        raise FileNotFoundError(f"数据文件不存在: {data_file}")
-    
-    problems = []
-    with open(data_file) as f:
-        for i, line in enumerate(f):
-            if max_instances is not None and i >= max_instances:
-                break
-            try:
-                problem = json.loads(line)
-                problems.append(problem)
-            except json.JSONDecodeError as e:
-                console.print(f"[yellow]警告: 跳过无效行 {i+1}: {e}[/yellow]")
-    
-    return problems
 
 
 def create_agent(model: Model, env: Environment, config: dict) -> Agent:
