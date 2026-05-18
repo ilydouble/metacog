@@ -27,17 +27,21 @@ from .base import BaseAgent
 class SuccessAnalyzer(BaseAgent):
     """Success case analyzer
 
-    Subscribes to successful TrajectoryEvents, extracts key steps and insights, stores in episodic memory
+    Subscribes to successful TrajectoryEvents, extracts key steps and insights,
+    stores in episodic memory, and tags matching pre-defined ontology nodes to
+    accumulate evidence_count for Graph RAG quality signals.
     """
-    
+
     def __init__(
         self,
         model: LitellmModel,
         bus: EventBus,
         episodic_memory: EpisodicMemory,
+        ontology_memory=None,   # MemUClient for the pre-defined ontology (optional)
     ) -> None:
         super().__init__(model, bus)
         self.episodic_memory = episodic_memory
+        self.ontology_memory = ontology_memory  # may be None when ontology RAG is disabled
     
     def _register_handlers(self) -> None:
         self.bus.subscribe(EventType.TRAJECTORY, self._on_trajectory)
@@ -144,7 +148,55 @@ class SuccessAnalyzer(BaseAgent):
             print(f"  [SuccessAnalyzer] ✗ Storage failed: {exc}", flush=True)
             import traceback
             traceback.print_exc()
+            return
+
+        # Tag matching pre-defined ontology nodes (evidence_count accumulation)
+        self._tag_ontology_nodes(problem_text, analysis)
     
+    def _tag_ontology_nodes(self, problem_text: str, analysis: dict) -> None:
+        """Update evidence_count on pre-defined ontology nodes that match this success case.
+
+        Strategy: build a query from the extracted analysis (problem_type + key_insight + tags),
+        do a semantic search on the ontology_memory vector DB, and increment evidence_count on
+        nodes whose similarity exceeds the threshold.  No extra LLM call needed.
+        """
+        if not self.ontology_memory:
+            return
+
+        # Build a rich query: distilled analysis fields + first 200 chars of problem text
+        parts = []
+        if analysis.get("problem_type"):
+            parts.append(analysis["problem_type"])
+        if analysis.get("key_insight"):
+            parts.append(analysis["key_insight"])
+        tags = analysis.get("tags", [])
+        if isinstance(tags, list):
+            parts.extend(tags)
+        elif isinstance(tags, str):
+            parts.append(tags)
+        # Include the beginning of the problem text for additional semantic signal
+        if problem_text:
+            parts.append(problem_text[:200])
+        query = " ".join(parts)
+
+        if not query.strip():
+            return
+
+        try:
+            matches = self.ontology_memory.search(query=query, top_k=3)
+            tagged = []
+            for match in matches:
+                # Only tag clearly relevant nodes (distance <= 0.6, i.e., similarity >= 40%)
+                if match.distance <= 0.6:
+                    self.ontology_memory.update_usage_stats(match.id, success=True)
+                    tagged.append(f"{match.id}(dist={match.distance:.2f})")
+            if tagged:
+                print(f"  [SuccessAnalyzer] 📌 Tagged ontology nodes: {', '.join(tagged)}", flush=True)
+            else:
+                print(f"  [SuccessAnalyzer] 📌 No ontology nodes matched (threshold 0.60)", flush=True)
+        except Exception as exc:
+            print(f"  [SuccessAnalyzer] ⚠️  Ontology tagging failed: {exc}", flush=True)
+
     def _extract_key_steps(
         self,
         problem: str,

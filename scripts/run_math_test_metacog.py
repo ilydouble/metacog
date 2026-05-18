@@ -377,12 +377,13 @@ def main(
         enable_loop_detection=True
     )
 
-    # 🔥 SuccessAnalyzer: 使用教师模型提取成功案例关键步骤
+    # 🔥 SuccessAnalyzer: 使用教师模型提取成功案例关键步骤，并标注预定义本体节点
     from metacog.agents.success_analyzer import SuccessAnalyzer
     _success_analyzer = SuccessAnalyzer(
         analyzer_model,  # 🔥 教师模型
         bus,
-        episodic_memory=episodic_memory
+        episodic_memory=episodic_memory,
+        ontology_memory=ontology_memory,  # 传入本体向量库，用于 evidence_count 积累
     )
 
     # 🔥 MemoryEvaluator: 定期评估记忆质量，清理低质量记忆
