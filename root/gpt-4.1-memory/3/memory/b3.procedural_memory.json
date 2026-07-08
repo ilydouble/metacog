@@ -1,0 +1,98 @@
+[
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "procedural",
+    "created_at": "2026-06-17T08:55:10.856159+00:00",
+    "skill_id": "da1fab61816bdd4a77d1f9fb",
+    "support_count": 1,
+    "dataset": "ds1000",
+    "item_index": 2,
+    "problem_id": 18,
+    "library_problem_id": 18,
+    "library": "Pandas",
+    "skill": {
+      "library": "pandas",
+      "task_family": "Conditional Replacement",
+      "retrieval_key": "conditional update based on multiple value ranges",
+      "api_concepts": "boolean masking, DataFrame.loc, logical OR, iteration over ranges",
+      "procedure": "1. Initialize a boolean mask with all values set to False, matching the length of the target data. 2. For each range in the list of ranges, update the mask by applying a logical OR with the condition that the target column's value falls within the current range. 3. After processing all ranges, use the combined mask to select and update only the relevant values in the target column. 4. Ensure that all other values remain unchanged.",
+      "avoid_assumption": "Assuming a fixed number of ranges or hardcoding range indices instead of handling an arbitrary number of ranges.",
+      "applicability_conditions": "When updating values in a DataFrame or array based on whether elements fall within any of several specified ranges.",
+      "non_applicability_conditions": "When the update condition is based on exact matches, a single range, or unrelated to value ranges.",
+      "preserve_constraints": "Preserve output shape, column names, data types, and ensure only targeted values are updated while all other values remain unchanged.",
+      "verification": "All and only the elements within any specified range are updated as intended, with unaffected elements and overall structure preserved.",
+      "confidence": "high"
+    },
+    "evidence": {
+      "reflection": {
+        "library": "pandas",
+        "task_family": "conditional value update based on multiple ranges",
+        "api_concepts": "boolean mask, DataFrame.loc, range-based condition, list iteration",
+        "task_intent": "Multiply the 'score' values for products whose 'product' value falls within any of several specified ranges by a constant.",
+        "prompt_evidence": "Multiply scores corresponding to products which between [1069104, 1069105] or [1179159, 1179161] by 10",
+        "observed_failure": "IndexError: list index out of range; code fails when products list has fewer than two ranges or more than two ranges",
+        "bug_pattern": "Code assumes a fixed number of ranges in the products list, leading to IndexError when the list length changes.",
+        "failed_assumption": "The failed code assumes products always contains exactly two ranges, directly indexing products[0] and products[1].",
+        "applicability_conditions": "When updating values in a DataFrame based on whether a column falls within any of multiple ranges specified in a list, regardless of the number of ranges.",
+        "non_applicability_conditions": "When only a single range is specified, or when the update condition is not based on ranges but on exact values or other criteria.",
+        "repair_pattern": "Iterate over all ranges in the products list, build a combined boolean mask using logical OR, and apply the update to all matching rows.",
+        "repair_steps": "1. Initialize a boolean mask as False for all rows. 2. For each range in products, update the mask with logical OR for rows where 'product' is within the range. 3. Use df.loc[mask, 'score'] *= 10 to update the scores. 4. Assign the updated DataFrame to the result variable.",
+        "preserve_constraints": "Do not change the DataFrame shape, column names, or data types; only update 'score' for matching products; leave other rows unchanged.",
+        "validation_check": "Verify that for every product in any specified range, the 'score' is multiplied by 10, and for all other products, the 'score' remains unchanged; confirm no IndexError occurs regardless of the number of ranges.",
+        "memory_eligible": "yes",
+        "confidence": "high"
+      },
+      "success_patch": "mask = pd.Series([False] * len(df))\nfor rng in products:\n    mask |= (df['product'] >= rng[0]) & (df['product'] <= rng[1])\ndf.loc[mask, 'score'] = df.loc[mask, 'score'] * 10\nresult = df",
+      "patch_diff": "--- failed_code+++ successful_code@@ -1,6 +1,5 @@-mask = (\n-    ((df['product'] >= products[0][0]) & (df['product'] <= products[0][1])) |\n-    ((df['product'] >= products[1][0]) & (df['product'] <= products[1][1]))\n-)\n+mask = pd.Series([False] * len(df))\n+for rng in products:\n+    mask |= (df['product'] >= rng[0]) & (df['product'] <= rng[1])\n df.loc[mask, 'score'] = df.loc[mask, 'score'] * 10\n result = df",
+      "success_verification": "Tests passed:\nDS1000 code_context test\n\nTests failed:"
+    }
+  },
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "procedural",
+    "created_at": "2026-06-17T08:55:24.737178+00:00",
+    "skill_id": "717d3381da74673fa25e8a29",
+    "support_count": 1,
+    "dataset": "ds1000",
+    "item_index": 4,
+    "problem_id": 254,
+    "library_problem_id": 254,
+    "library": "Pandas",
+    "skill": {
+      "library": "pandas",
+      "task_family": "Conditional Replacement",
+      "retrieval_key": "concatenate lists with mixed types in column",
+      "api_concepts": "apply, ast.literal_eval, isinstance, sum, tolist",
+      "procedure": "1. For each element in the target column, check if it is a string. 2. If it is a string, parse it into a list using a safe evaluation method. 3. If it is already a list, leave it unchanged. 4. Collect all resulting lists into a list of lists. 5. Concatenate all lists into a single flat list.",
+      "avoid_assumption": "Assuming all column values are of the same type (e.g., all lists or all strings representing lists).",
+      "applicability_conditions": "When a pandas column contains a mix of lists and string representations of lists, and you need to concatenate all elements into a single list.",
+      "non_applicability_conditions": "When all column values are already lists, or when strings do not represent lists.",
+      "preserve_constraints": "Preserve the order of elements as they appear in the column; do not alter the original dataframe; ensure the output is a flat list containing all elements.",
+      "verification": "The output is a flat list containing all elements from the original column, regardless of their original type, with no loss or duplication of data.",
+      "confidence": "high"
+    },
+    "evidence": {
+      "reflection": {
+        "library": "pandas",
+        "task_family": "pandas column list concatenation",
+        "api_concepts": "apply, sum, tolist, ast.literal_eval",
+        "task_intent": "Concatenate all lists stored in a pandas column into a single list, handling cases where the column contains string representations of lists.",
+        "prompt_evidence": "each value in my list column is type str. I have tried converting using list(), literal_eval() but it does not work. How to concatenate pandas column with list values into one list?",
+        "observed_failure": "TypeError: eval() arg 1 must be a string, bytes or code object",
+        "bug_pattern": "Blindly applying eval to all column values without checking their type causes errors when the values are already lists.",
+        "failed_assumption": "Assumed all column values are string representations of lists, but some may already be lists.",
+        "applicability_conditions": "When concatenating a pandas column containing lists or string representations of lists into a single list.",
+        "non_applicability_conditions": "When the column contains only lists (not strings), or only strings that are not list representations.",
+        "repair_pattern": "Apply a function that checks the type of each value: if it's a string, parse it to a list (e.g., using ast.literal_eval); if it's already a list, use as-is. Then concatenate all lists.",
+        "repair_steps": "1. Import ast.literal_eval. 2. Use apply with a function that returns ast.literal_eval(x) if x is a string, else x. 3. Convert the result to a list of lists. 4. Concatenate using sum or itertools.chain.",
+        "preserve_constraints": "Output must be a single list containing all elements from the column's lists; do not change column names, index, or output type.",
+        "validation_check": "Verify that the result is a flat list containing all elements from the original column, regardless of whether the column values were lists or string representations of lists.",
+        "memory_eligible": "yes",
+        "confidence": "high"
+      },
+      "success_patch": "import ast\nresult = sum(df['col1'].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else x).tolist(), [])",
+      "patch_diff": "--- failed_code+++ successful_code@@ -1 +1,2 @@-result = sum(df['col1'].apply(eval).tolist(), [])+import ast\n+result = sum(df['col1'].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else x).tolist(), [])",
+      "success_verification": "Tests passed:\nDS1000 code_context test\n\nTests failed:"
+    }
+  }
+]

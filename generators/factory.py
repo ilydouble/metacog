@@ -1,7 +1,7 @@
 from .py_generate import PyGenerator
 from .rs_generate import RsGenerator
 from .generator_types import Generator
-from .model import CodeLlama, ModelBase, GPT4, GPT35, StarChat, GPTDavinci
+from .model import CodeLlama, ModelBase, GPT4, GPT4oMini, GPT35, StarChat, GPTDavinci, GLMChat
 
 
 def generator_factory(lang: str) -> Generator:
@@ -16,10 +16,14 @@ def generator_factory(lang: str) -> Generator:
 def model_factory(model_name: str) -> ModelBase:
     if model_name == "gpt-4":
         return GPT4()
+    elif model_name == "gpt-4.1":
+        return GPT4oMini()
     elif model_name == "gpt-3.5-turbo":
         return GPT35()
     elif model_name == "starchat":
         return StarChat()
+    elif model_name.lower().startswith("glm-"):
+        return GLMChat(model_name)
     elif model_name.startswith("codellama"):
         # if it has `-` in the name, version was specified
         kwargs = {}

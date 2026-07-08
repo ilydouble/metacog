@@ -1,0 +1,112 @@
+[
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "procedural",
+    "created_at": "2026-06-20T08:20:51.965721+00:00",
+    "skill_id": "62b04914f0472fae17c38886",
+    "support_count": 1,
+    "dataset": "ds1000",
+    "item_index": 5,
+    "problem_id": 69,
+    "library_problem_id": 69,
+    "library": "Pandas",
+    "skill": {
+      "library": "pandas",
+      "task_family": "Filtering",
+      "retrieval_key": "conditional row and column selection preserving DataFrame",
+      "api_concepts": "DataFrame.loc, boolean mask, column selection",
+      "procedure": "1. Identify the condition for filtering rows based on column values. 2. Construct a boolean mask representing the filtering criterion. 3. Specify the subset of columns to retain. 4. Use a combined selection method to filter rows and select columns simultaneously. 5. Return the resulting DataFrame without converting to other types.",
+      "avoid_assumption": "Assuming conversion to a numpy array is required when the output should remain a DataFrame.",
+      "applicability_conditions": "When both row filtering and column selection are needed, and the output is expected to be a pandas DataFrame.",
+      "non_applicability_conditions": "When the output is explicitly required to be a numpy array or another non-DataFrame type.",
+      "preserve_constraints": "Preserve DataFrame type, shape, index, column names, and unaffected values outside the filtered subset.",
+      "verification": "The result is a DataFrame containing only the filtered rows and specified columns, with correct structure and preserved metadata.",
+      "confidence": "high"
+    },
+    "evidence": [
+      {
+        "evidence_id": "95f4ba055f9e7d44682653a0",
+        "item_index": 5,
+        "problem_id": 69,
+        "library_problem_id": 69,
+        "reflection": {
+          "library": "pandas",
+          "task_family": "Filtering",
+          "api_concepts": "DataFrame.loc, boolean mask, column selection",
+          "task_intent": "Select rows where column 'c' > 0.45 and only columns 'a', 'b', and 'e', returning a DataFrame.",
+          "prompt_evidence": "I want only those rows in which the value for column 'c' is greater than 0.45, but I only need columns 'a', 'b' and 'e' for those rows.",
+          "observed_failure": "actual_result: type=ndarray, expected_result: type=DataFrame",
+          "bug_pattern": "Converting the filtered DataFrame to a numpy array when the expected output is a DataFrame.",
+          "failed_assumption": "Assumed the result should be a numpy array for downstream use, but the test expects a DataFrame.",
+          "applicability_conditions": "When the prompt or test expects a pandas DataFrame as output after filtering and column selection.",
+          "non_applicability_conditions": "When the prompt or test explicitly requests a numpy array or other non-DataFrame output.",
+          "repair_pattern": "Return the filtered and column-selected DataFrame directly, without converting to numpy array.",
+          "repair_steps": "Remove the .to_numpy() call; assign result = df.loc[df['c'] > 0.45, columns].",
+          "preserve_constraints": "Keep the filtered rows (c > 0.45), select only columns ['a', 'b', 'e'], preserve DataFrame type, shape, index, and column names.",
+          "validation_check": "Verify that result is a DataFrame with columns ['a', 'b', 'e'], correct shape, and only rows where c > 0.45.",
+          "memory_eligible": "yes",
+          "confidence": "high"
+        },
+        "success_patch": "result = df.loc[df['c'] > 0.45, columns]",
+        "patch_diff": "--- failed_code+++ successful_code@@ -1 +1 @@-result = df.loc[df['c'] > 0.45, columns].to_numpy()+result = df.loc[df['c'] > 0.45, columns]",
+        "success_verification": "Tests passed:\nDS1000 code_context test\n\nTests failed:"
+      }
+    ],
+    "retrieval_text": "task_family: Filtering\nretrieval_key: conditional row and column selection preserving DataFrame\nprocedure: 1. Identify the condition for filtering rows based on column values. 2. Construct a boolean mask representing the filtering criterion. 3. Specify the subset of columns to retain. 4. Use a combined selection method to filter rows and select columns simultaneously. 5. Return the resulting DataFrame without converting to other types.\navoid_assumption: Assuming conversion to a numpy array is required when the output should remain a DataFrame."
+  },
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "procedural",
+    "created_at": "2026-06-20T08:21:17.468271+00:00",
+    "skill_id": "386891321881894cf0632ec8",
+    "support_count": 1,
+    "dataset": "ds1000",
+    "item_index": 9,
+    "problem_id": 41,
+    "library_problem_id": 41,
+    "library": "Pandas",
+    "skill": {
+      "library": "pandas",
+      "task_family": "Other",
+      "retrieval_key": "ensure formatted string output matches required trailing newline",
+      "api_concepts": "string join, string formatting, value_counts, DataFrame iteration",
+      "procedure": "1. Generate formatted string sections for each relevant object or column. 2. Join the sections using the specified separator. 3. Append a trailing newline character if the output format requires it. 4. Validate that the final string output matches the required structure, including any trailing newlines.",
+      "avoid_assumption": "Assuming that omitting a trailing newline in formatted string output will always match the required output format.",
+      "applicability_conditions": "When producing a multi-section formatted string output where the specification or example includes a trailing newline after the last section.",
+      "non_applicability_conditions": "When the output format does not require a trailing newline or when output is not string-based.",
+      "preserve_constraints": "Preserve per-section formatting, section order, and the content of each section; do not alter the underlying data or output type.",
+      "verification": "The output string matches the required format, including section structure and any trailing newline, with all sections present and correctly formatted.",
+      "confidence": "high"
+    },
+    "evidence": [
+      {
+        "evidence_id": "58051982c5634461e22ddf64",
+        "item_index": 9,
+        "problem_id": 41,
+        "library_problem_id": 41,
+        "reflection": {
+          "library": "pandas",
+          "task_family": "Other",
+          "api_concepts": "value_counts, string join, DataFrame iteration",
+          "task_intent": "Display the value counts for each column in a dataframe, formatted as a string with column headers.",
+          "prompt_evidence": "Please return a String like this: ...",
+          "observed_failure": "actual_result is missing a trailing newline compared to expected_result",
+          "bug_pattern": "Omitting required trailing newline in formatted string output, causing string mismatch.",
+          "failed_assumption": "Assumed that joining the formatted column outputs without a final newline would match the required output format.",
+          "applicability_conditions": "When the prompt requires a formatted string output with a specific structure, including a trailing newline after the last section.",
+          "non_applicability_conditions": "When the output format does not require a trailing newline or is not string-based.",
+          "repair_pattern": "Ensure the final formatted string includes a trailing newline to match the required output structure.",
+          "repair_steps": "After joining the per-column formatted strings, append a newline character ('\\n') to the result.",
+          "preserve_constraints": "Do not alter the per-column formatting, column order, or the use of value_counts; output type must remain string.",
+          "validation_check": "Verify that the output string ends with a newline and matches the prompt's example structure, resolving the mismatch.",
+          "memory_eligible": "yes",
+          "confidence": "high"
+        },
+        "success_patch": "result = '\\n'.join(\n    f\"---- {col} ---\\n{df[col].value_counts()}\" for col in df.columns\n) + '\\n'",
+        "patch_diff": "--- failed_code+++ successful_code@@ -1,3 +1,3 @@ result = '\\n'.join(\n     f\"---- {col} ---\\n{df[col].value_counts()}\" for col in df.columns\n-)+) + '\\n'",
+        "success_verification": "Tests passed:\nDS1000 code_context test\n\nTests failed:"
+      }
+    ],
+    "retrieval_text": "task_family: Other\nretrieval_key: ensure formatted string output matches required trailing newline\nprocedure: 1. Generate formatted string sections for each relevant object or column. 2. Join the sections using the specified separator. 3. Append a trailing newline character if the output format requires it. 4. Validate that the final string output matches the required structure, including any trailing newlines.\navoid_assumption: Assuming that omitting a trailing newline in formatted string output will always match the required output format."
+  }
+]

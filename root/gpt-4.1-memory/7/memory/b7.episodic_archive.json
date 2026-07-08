@@ -1,0 +1,97 @@
+[
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "episodic_archive",
+    "created_at": "2026-06-22T14:03:34.053361+00:00",
+    "episode_id": "49d66629dbb800d032d4ca8f",
+    "dataset": "ds1000",
+    "item_index": 0,
+    "problem_id": 160,
+    "library_problem_id": 160,
+    "library": "Pandas",
+    "perturbation_type": "Origin",
+    "perturbation_origin_id": 160,
+    "prompt": "Problem:\nHow do I apply sort to a pandas groupby operation? The command below returns an error saying that 'bool' object is not callable\nimport pandas as pd\ndf.groupby('cokey').sort('A')\ncokey       A   B\n11168155    18  56\n11168155    0   18\n11168155    56  96\n11168156    96  152\n11168156    0   96\n\n\ndesired:\n               cokey   A    B\ncokey                        \n11168155 1  11168155   0   18\n         0  11168155  18   56\n         2  11168155  56   96\n11168156 4  11168156   0   96\n         3  11168156  96  152\n\n\n\n\nA:\n<code>\nimport pandas as pd\n\n\ndf = pd.DataFrame({'cokey':[11168155,11168155,11168155,11168156,11168156],\n                   'A':[18,0,56,96,0],\n                   'B':[56,18,96,152,96]})\n</code>\nresult = ... # put solution in this variable\nBEGIN SOLUTION\n<code>\n",
+    "code_context": "import pandas as pd\nimport numpy as np\nimport copy\n\n\ndef generate_test_case(test_case_id):\n    def generate_ans(data):\n        df = data\n        return df.groupby(\"cokey\").apply(pd.DataFrame.sort_values, \"A\")\n\n    def define_test_input(test_case_id):\n        if test_case_id == 1:\n            df = pd.DataFrame(\n                {\n                    \"cokey\": [11168155, 11168155, 11168155, 11168156, 11168156],\n                    \"A\": [18, 0, 56, 96, 0],\n                    \"B\": [56, 18, 96, 152, 96],\n                }\n            )\n        if test_case_id == 2:\n            df = pd.DataFrame(\n                {\n                    \"cokey\": [155, 155, 155, 156, 156],\n                    \"A\": [18, 0, 56, 96, 0],\n                    \"B\": [56, 18, 96, 152, 96],\n                }\n            )\n        return df\n\n    test_input = define_test_input(test_case_id)\n    expected_result = generate_ans(copy.deepcopy(test_input))\n    return test_input, expected_result\n\n\ndef exec_test(result, ans):\n    try:\n        pd.testing.assert_frame_equal(result, ans, check_dtype=False)\n        return 1\n    except:\n        return 0\n\n\nexec_context = r\"\"\"\nimport pandas as pd\nimport numpy as np\ndf = test_input\n[insert]\n\"\"\"\n\n\ndef test_execution(solution: str):\n    code = exec_context.replace(\"[insert]\", solution)\n    for i in range(2):\n        test_input, expected_result = generate_test_case(i + 1)\n        test_env = {\"test_input\": test_input}\n        exec(code, test_env)\n        assert exec_test(test_env[\"result\"], expected_result)\n",
+    "reference_code": "def g(df):\n    return df.groupby('cokey').apply(pd.DataFrame.sort_values, 'A')\n\nresult = g(df.copy())\n",
+    "is_solved": false,
+    "final_solution": "df_sorted = df.sort_values(['cokey', 'A'])\ndf_sorted = df_sorted.reset_index()\ndf_sorted = df_sorted.set_index(['cokey', 'index'])\nresult = df_sorted",
+    "attempts": [
+      {
+        "attempt_index": 0,
+        "implementation": "result = df.sort_values(['cokey', 'A']).set_index(['cokey']).sort_index()",
+        "feedback": "Tests passed:\n\nTests failed:\nAssertionError\n  File \"/Users/liudada/Desktop/programming/executors/ds1000_executor.py\", line 48, in _run_test\n    function_with_timeout(test_execution, (solution,), timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 40, in function_with_timeout\n    thread.join(timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 27, in join\n    raise self.exc\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 20, in run\n    self.ret = self._target(*self._args, **self._kwargs)\nAssertionError\n\n\nDS1000 diagnostic outputs:\nTestCase 1 failed (public example).\nactual_result: type=DataFrame\nshape=(5, 2)\ncolumns=['A', 'B']\ndtypes=A    int64\nB    int64\ndtype: object\nvalue=           A    B\ncokey            \n11168155   0   18\n11168155  18   56\n11168155  56   96\n11168156   0   96\n11168156  96  152\nexpected_result: type=DataFrame\nshape=(5, 3)\ncolumns=['cokey', 'A', 'B']\ndtypes=cokey    int64\nA        int64\nB        int64\ndtype: object\nvalue=               cokey   A    B\ncokey                        \n11168155 1  11168155   0   18\n         0  11168155  18   56\n         2  11168155  56   96\n11168156 4  11168156   0   96\n         3  11168156  96  152\n",
+        "is_passing": false,
+        "reflection_after_failure": {
+          "library": "pandas",
+          "task_family": "Sorting",
+          "api_concepts": "sort_values, groupby, set_index",
+          "root_cause": "The actual result is missing the 'cokey' column and does not have the expected MultiIndex structure; it only sets 'cokey' as the index and sorts, rather than grouping and sorting within groups while preserving all columns.",
+          "failed_assumption": "The code assumed that simply sorting by 'cokey' and 'A' and setting 'cokey' as the index would match the expected output, but it did not create the required MultiIndex or retain the 'cokey' column as a data column.",
+          "repair_action": "After sorting by 'cokey' and 'A', reset the index to restore the default integer index, then set a MultiIndex with ['cokey', original row index], and ensure the 'cokey' column remains in the DataFrame.",
+          "preserve_constraints": "Output must have columns ['cokey', 'A', 'B'], a MultiIndex with 'cokey' and the original row index, and match the expected row ordering.",
+          "confidence": "high"
+        }
+      },
+      {
+        "attempt_index": 1,
+        "implementation": "df_sorted = df.sort_values(['cokey', 'A'])\ndf_sorted = df_sorted.reset_index()\ndf_sorted = df_sorted.set_index(['cokey', 'index'])\nresult = df_sorted",
+        "feedback": "Tests passed:\n\nTests failed:\nAssertionError\n  File \"/Users/liudada/Desktop/programming/executors/ds1000_executor.py\", line 48, in _run_test\n    function_with_timeout(test_execution, (solution,), timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 40, in function_with_timeout\n    thread.join(timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 27, in join\n    raise self.exc\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 20, in run\n    self.ret = self._target(*self._args, **self._kwargs)\nAssertionError\n\n\nDS1000 diagnostic outputs:\nTestCase 1 failed (public example).\nactual_result: type=DataFrame\nshape=(5, 2)\ncolumns=['A', 'B']\ndtypes=A    int64\nB    int64\ndtype: object\nvalue=                 A    B\ncokey    index         \n11168155 1       0   18\n         0      18   56\n         2      56   96\n11168156 4       0   96\n         3      96  152\nexpected_result: type=DataFrame\nshape=(5, 3)\ncolumns=['cokey', 'A', 'B']\ndtypes=cokey    int64\nA        int64\nB        int64\ndtype: object\nvalue=               cokey   A    B\ncokey                        \n11168155 1  11168155   0   18\n         0  11168155  18   56\n         2  11168155  56   96\n11168156 4  11168156   0   96\n         3  11168156  96  152\n",
+        "is_passing": false,
+        "reflection_after_failure": {
+          "library": "pandas",
+          "task_family": "Sorting",
+          "api_concepts": "sort_values, set_index",
+          "root_cause": "The actual result is missing the 'cokey' column, while the expected result includes it; the code sets 'cokey' as an index and drops it from columns.",
+          "failed_assumption": "The code assumed that setting 'cokey' as an index is sufficient, but the expected output requires 'cokey' as both an index and a column.",
+          "repair_action": "After sorting and setting the multi-index, reset the index and then set it again so that 'cokey' remains as a column in the DataFrame, matching the expected output.",
+          "preserve_constraints": "Keep the output shape, ordering, and column types identical to the expected result, including 'cokey' as both an index and a column.",
+          "confidence": "high"
+        }
+      }
+    ]
+  },
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "episodic_archive",
+    "created_at": "2026-06-22T14:03:50.127363+00:00",
+    "episode_id": "359d9a0ca56896dfec2c67cc",
+    "dataset": "ds1000",
+    "item_index": 2,
+    "problem_id": 18,
+    "library_problem_id": 18,
+    "library": "Pandas",
+    "perturbation_type": "Difficult-Rewrite",
+    "perturbation_origin_id": 16,
+    "prompt": "Problem:\nI have a dataframe that looks like this:\n     product     score\n0    1179160  0.424654\n1    1066490  0.424509\n2    1148126  0.422207\n3    1069104  0.420455\n4    1069105  0.414603\n..       ...       ...\n491  1160330  0.168784\n492  1069098  0.168749\n493  1077784  0.168738\n494  1193369  0.168703\n495  1179741  0.168684\n\n\nwhat I'm trying to achieve is to multiply certain score values corresponding to specific products by a constant.\nI have the products target of this multiplication in a list like this: [[1069104, 1069105], [1179159, 1179161]] (this is just a simplified\nexample, in reality it would be more than two products) and my goal is to obtain this:\nMultiply scores corresponding to products which between [1069104, 1069105] or [1179159, 1179161] by 10:\n     product     score\n0    1179160  4.24654\n1    1066490  0.424509\n2    1148126  0.422207\n3    1069104  4.204550\n4    1069105  4.146030\n..       ...       ...\n491  1160330  0.168784\n492  1069098  0.168749\n493  1077784  0.168738\n494  1193369  0.168703\n495  1179741  0.168684\n\n\nI know that exists DataFrame.multiply but checking the examples it works for full columns, and I just one to change those specific values.\n\n\nA:\n<code>\nimport pandas as pd\n\n\ndf = pd.DataFrame({'product': [1179160, 1066490, 1148126, 1069104, 1069105, 1160330, 1069098, 1077784, 1193369, 1179741],\n                   'score': [0.424654, 0.424509, 0.422207, 0.420455, 0.414603, 0.168784, 0.168749, 0.168738, 0.168703, 0.168684]})\nproducts = [[1069104, 1069105], [1066489, 1066491]]\n</code>\ndf = ... # put solution in this variable\nBEGIN SOLUTION\n<code>\n",
+    "code_context": "import pandas as pd\nimport numpy as np\nimport copy\n\n\ndef generate_test_case(test_case_id):\n    def generate_ans(data):\n        data = data\n        df, prod_list = data\n        for product in prod_list:\n            df.loc[\n                (df[\"product\"] >= product[0]) & (df[\"product\"] <= product[1]), \"score\"\n            ] *= 10\n        return df\n\n    def define_test_input(test_case_id):\n        if test_case_id == 1:\n            df = pd.DataFrame(\n                {\n                    \"product\": [\n                        1179160,\n                        1066490,\n                        1148126,\n                        1069104,\n                        1069105,\n                        1160330,\n                        1069098,\n                        1077784,\n                        1193369,\n                        1179741,\n                    ],\n                    \"score\": [\n                        0.424654,\n                        0.424509,\n                        0.422207,\n                        0.420455,\n                        0.414603,\n                        0.168784,\n                        0.168749,\n                        0.168738,\n                        0.168703,\n                        0.168684,\n                    ],\n                }\n            )\n            products = [[1069104, 1069105], [1066489, 1066491]]\n        if test_case_id == 2:\n            df = pd.DataFrame(\n                {\n                    \"product\": [\n                        1179160,\n                        1066490,\n                        1148126,\n                        1069104,\n                        1069105,\n                        1160330,\n                        1069098,\n                        1077784,\n                        1193369,\n                        1179741,\n                    ],\n                    \"score\": [\n                        0.424654,\n                        0.424509,\n                        0.422207,\n                        0.420455,\n                        0.414603,\n                        0.168784,\n                        0.168749,\n                        0.168738,\n                        0.168703,\n                        0.168684,\n                    ],\n                }\n            )\n            products = [\n                [1069104, 1069105],\n            ]\n        return df, products\n\n    test_input = define_test_input(test_case_id)\n    expected_result = generate_ans(copy.deepcopy(test_input))\n    return test_input, expected_result\n\n\ndef exec_test(result, ans):\n    try:\n        pd.testing.assert_frame_equal(result, ans, check_dtype=False)\n        return 1\n    except:\n        return 0\n\n\nexec_context = r\"\"\"\nimport pandas as pd\nimport numpy as np\ndf, products = test_input\n[insert]\nresult = df\n\"\"\"\n\n\ndef test_execution(solution: str):\n    code = exec_context.replace(\"[insert]\", solution)\n    for i in range(2):\n        test_input, expected_result = generate_test_case(i + 1)\n        test_env = {\"test_input\": test_input}\n        exec(code, test_env)\n        assert exec_test(test_env[\"result\"], expected_result)\n",
+    "reference_code": "for product in products:\n    df.loc[(df['product'] >= product[0]) & (df['product'] <= product[1]), 'score'] *= 10\n",
+    "is_solved": true,
+    "final_solution": "mask = False\nfor rng in products:\n    mask = mask | ((df['product'] >= rng[0]) & (df['product'] <= rng[1]))\ndf.loc[mask, 'score'] = df.loc[mask, 'score'] * 10\nresult = df",
+    "attempts": [
+      {
+        "attempt_index": 0,
+        "implementation": "mask = (\n    ((df['product'] >= products[0][0]) & (df['product'] <= products[0][1])) |\n    ((df['product'] >= products[1][0]) & (df['product'] <= products[1][1]))\n)\ndf.loc[mask, 'score'] = df.loc[mask, 'score'] * 10\nresult = df",
+        "feedback": "Tests passed:\n\nTests failed:\nIndexError: list index out of range\nTraceback (most recent call last):\n  File \"/Users/liudada/Desktop/programming/executors/ds1000_executor.py\", line 48, in _run_test\n    function_with_timeout(test_execution, (solution,), timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 40, in function_with_timeout\n    thread.join(timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 27, in join\n    raise self.exc\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 20, in run\n    self.ret = self._target(*self._args, **self._kwargs)\nIndexError: list index out of range\n\n\nDS1000 diagnostic outputs:\nTestCase 1 failed (public example).\nactual_result: type=DataFrame\nshape=(10, 2)\ncolumns=['product', 'score']\ndtypes=product      int64\nscore      float64\ndtype: object\nvalue=   product     score\n0  1179160  0.424654\n1  1066490  4.245090\n2  1148126  0.422207\n3  1069104  4.204550\n4  1069105  4.146030\n5  1160330  0.168784\n6  1069098  0.168749\n7  1077784  0.168738\n8  1193369  0.168703\n9  1179741  0.168684\nexpected_result: type=DataFrame\nshape=(10, 2)\ncolumns=['product', 'score']\ndtypes=product      int64\nscore      float64\ndtype: object\nvalue=   product     score\n0  1179160  0.424654\n1  1066490  4.245090\n2  1148126  0.422207\n3  1069104  4.204550\n4  1069105  4.146030\n5  1160330  0.168784\n6  1069098  0.168749\n7  1077784  0.168738\n8  1193369  0.168703\n9  1179741  0.168684\n",
+        "is_passing": false,
+        "reflection_after_failure": {
+          "library": "pandas",
+          "task_family": "Assignment",
+          "api_concepts": "boolean mask, loc assignment",
+          "root_cause": "The code assumes 'products' always has at least two sublists, but in some test cases it does not, causing an IndexError.",
+          "failed_assumption": "The code expects 'products' to always contain exactly two sublists for range masking.",
+          "repair_action": "Iterate over all sublists in 'products', building a combined mask for all specified ranges, so the code works for any number of ranges.",
+          "preserve_constraints": "Keep the DataFrame shape, columns, dtypes, and row ordering unchanged.",
+          "confidence": "high"
+        }
+      },
+      {
+        "attempt_index": 1,
+        "implementation": "mask = False\nfor rng in products:\n    mask = mask | ((df['product'] >= rng[0]) & (df['product'] <= rng[1]))\ndf.loc[mask, 'score'] = df.loc[mask, 'score'] * 10\nresult = df",
+        "feedback": "Tests passed:\nDS1000 code_context test\n\nTests failed:",
+        "is_passing": true,
+        "reflection_after_failure": null
+      }
+    ]
+  }
+]

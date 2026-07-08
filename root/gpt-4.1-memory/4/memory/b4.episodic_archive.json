@@ -1,0 +1,70 @@
+[
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "episodic_archive",
+    "created_at": "2026-06-17T09:15:29.327102+00:00",
+    "episode_id": "ebe03f03301a5a8e62fe6c01",
+    "dataset": "ds1000",
+    "item_index": 0,
+    "problem_id": 160,
+    "library_problem_id": 160,
+    "library": "Pandas",
+    "perturbation_type": "Origin",
+    "perturbation_origin_id": 160,
+    "prompt": "Problem:\nHow do I apply sort to a pandas groupby operation? The command below returns an error saying that 'bool' object is not callable\nimport pandas as pd\ndf.groupby('cokey').sort('A')\ncokey       A   B\n11168155    18  56\n11168155    0   18\n11168155    56  96\n11168156    96  152\n11168156    0   96\n\n\ndesired:\n               cokey   A    B\ncokey                        \n11168155 1  11168155   0   18\n         0  11168155  18   56\n         2  11168155  56   96\n11168156 4  11168156   0   96\n         3  11168156  96  152\n\n\n\n\nA:\n<code>\nimport pandas as pd\n\n\ndf = pd.DataFrame({'cokey':[11168155,11168155,11168155,11168156,11168156],\n                   'A':[18,0,56,96,0],\n                   'B':[56,18,96,152,96]})\n</code>\nresult = ... # put solution in this variable\nBEGIN SOLUTION\n<code>\n",
+    "code_context": "import pandas as pd\nimport numpy as np\nimport copy\n\n\ndef generate_test_case(test_case_id):\n    def generate_ans(data):\n        df = data\n        return df.groupby(\"cokey\").apply(pd.DataFrame.sort_values, \"A\")\n\n    def define_test_input(test_case_id):\n        if test_case_id == 1:\n            df = pd.DataFrame(\n                {\n                    \"cokey\": [11168155, 11168155, 11168155, 11168156, 11168156],\n                    \"A\": [18, 0, 56, 96, 0],\n                    \"B\": [56, 18, 96, 152, 96],\n                }\n            )\n        if test_case_id == 2:\n            df = pd.DataFrame(\n                {\n                    \"cokey\": [155, 155, 155, 156, 156],\n                    \"A\": [18, 0, 56, 96, 0],\n                    \"B\": [56, 18, 96, 152, 96],\n                }\n            )\n        return df\n\n    test_input = define_test_input(test_case_id)\n    expected_result = generate_ans(copy.deepcopy(test_input))\n    return test_input, expected_result\n\n\ndef exec_test(result, ans):\n    try:\n        pd.testing.assert_frame_equal(result, ans, check_dtype=False)\n        return 1\n    except:\n        return 0\n\n\nexec_context = r\"\"\"\nimport pandas as pd\nimport numpy as np\ndf = test_input\n[insert]\n\"\"\"\n\n\ndef test_execution(solution: str):\n    code = exec_context.replace(\"[insert]\", solution)\n    for i in range(2):\n        test_input, expected_result = generate_test_case(i + 1)\n        test_env = {\"test_input\": test_input}\n        exec(code, test_env)\n        assert exec_test(test_env[\"result\"], expected_result)\n",
+    "reference_code": "def g(df):\n    return df.groupby('cokey').apply(pd.DataFrame.sort_values, 'A')\n\nresult = g(df.copy())\n",
+    "is_solved": false,
+    "final_solution": "result = df.sort_values(['cokey', 'A']).reset_index().set_index(['cokey', 'index'])",
+    "attempts": [
+      {
+        "attempt_index": 0,
+        "implementation": "result = df.sort_values(['cokey', 'A']).set_index(['cokey'], append=False)",
+        "feedback": "Tests passed:\n\nTests failed:\nAssertionError\n  File \"/Users/liudada/Desktop/programming/executors/ds1000_executor.py\", line 48, in _run_test\n    function_with_timeout(test_execution, (solution,), timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 40, in function_with_timeout\n    thread.join(timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 27, in join\n    raise self.exc\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 20, in run\n    self.ret = self._target(*self._args, **self._kwargs)\nAssertionError\n\n\nDS1000 diagnostic outputs:\nTestCase 1 failed (public example).\nactual_result: type=DataFrame\nshape=(5, 2)\ncolumns=['A', 'B']\ndtypes=A    int64\nB    int64\ndtype: object\nvalue=           A    B\ncokey            \n11168155   0   18\n11168155  18   56\n11168155  56   96\n11168156   0   96\n11168156  96  152\nexpected_result: type=DataFrame\nshape=(5, 3)\ncolumns=['cokey', 'A', 'B']\ndtypes=cokey    int64\nA        int64\nB        int64\ndtype: object\nvalue=               cokey   A    B\ncokey                        \n11168155 1  11168155   0   18\n         0  11168155  18   56\n         2  11168155  56   96\n11168156 4  11168156   0   96\n         3  11168156  96  152\n",
+        "is_passing": false,
+        "reflection_after_failure": {
+          "library": "pandas",
+          "task_family": "pandas groupby sort and reindex",
+          "api_concepts": "groupby, sort_values, set_index, reset_index, reindex, DataFrame indexing",
+          "task_intent": "Sort each group in a DataFrame by a column and set a hierarchical index with group key and original row index, preserving all columns.",
+          "prompt_evidence": "\"How do I apply sort to a pandas groupby operation?\" and the desired output shows a MultiIndex with both group key and original row index, and all columns including 'cokey'.",
+          "observed_failure": "actual_result is missing the 'cokey' column and does not have the correct MultiIndex; expected_result has a MultiIndex (cokey, original index) and includes the 'cokey' column.",
+          "bug_pattern": "The code sorts the DataFrame and sets only the group key as the index, dropping the group key column and not preserving the original row index as a second level of the index.",
+          "failed_assumption": "Assumed that setting the group key as the index after sorting would match the desired output, but this omits the original row index and drops the group key column from the data.",
+          "applicability_conditions": "When the task requires sorting within groups and setting a MultiIndex with both the group key and the original row index, while preserving all columns including the group key.",
+          "non_applicability_conditions": "When only a single-level index is needed, or when the group key column should be dropped from the data, or when sorting is not required within groups.",
+          "repair_pattern": "After sorting by group key and the desired column, set a MultiIndex with both the group key and the original row index, and ensure all columns (including the group key) are preserved in the result.",
+          "repair_steps": "1. Sort the DataFrame by the group key and the target column. 2. Use reset_index() to ensure the original row index is available. 3. Set a MultiIndex with the group key and the original row index. 4. Ensure the group key column remains in the DataFrame columns.",
+          "preserve_constraints": "Do not drop any columns; output must have the same columns as the input (including 'cokey'), and the index must be a MultiIndex of (cokey, original row index). Output shape and dtypes must match expected.",
+          "validation_check": "Check that the output DataFrame has a MultiIndex with levels (cokey, original row index), all original columns including 'cokey', and that rows are sorted within each group as specified.",
+          "memory_eligible": "yes",
+          "confidence": "high"
+        }
+      },
+      {
+        "attempt_index": 1,
+        "implementation": "result = df.sort_values(['cokey', 'A']).reset_index().set_index(['cokey', 'index'])",
+        "feedback": "Tests passed:\n\nTests failed:\nAssertionError\n  File \"/Users/liudada/Desktop/programming/executors/ds1000_executor.py\", line 48, in _run_test\n    function_with_timeout(test_execution, (solution,), timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 40, in function_with_timeout\n    thread.join(timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 27, in join\n    raise self.exc\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 20, in run\n    self.ret = self._target(*self._args, **self._kwargs)\nAssertionError\n\n\nDS1000 diagnostic outputs:\nTestCase 1 failed (public example).\nactual_result: type=DataFrame\nshape=(5, 2)\ncolumns=['A', 'B']\ndtypes=A    int64\nB    int64\ndtype: object\nvalue=                 A    B\ncokey    index         \n11168155 1       0   18\n         0      18   56\n         2      56   96\n11168156 4       0   96\n         3      96  152\nexpected_result: type=DataFrame\nshape=(5, 3)\ncolumns=['cokey', 'A', 'B']\ndtypes=cokey    int64\nA        int64\nB        int64\ndtype: object\nvalue=               cokey   A    B\ncokey                        \n11168155 1  11168155   0   18\n         0  11168155  18   56\n         2  11168155  56   96\n11168156 4  11168156   0   96\n         3  11168156  96  152\n",
+        "is_passing": false,
+        "reflection_after_failure": {
+          "library": "pandas",
+          "task_family": "pandas groupby sort and preserve columns",
+          "api_concepts": "groupby, sort_values, set_index, reset_index",
+          "task_intent": "Sort each group in a DataFrame by a column and preserve all original columns including the group key.",
+          "prompt_evidence": "How do I apply sort to a pandas groupby operation? ... desired: columns=['cokey', 'A', 'B']",
+          "observed_failure": "actual_result is missing the 'cokey' column; expected_result includes 'cokey' as a column.",
+          "bug_pattern": "After sorting and setting a multi-index, the group key column is dropped from the columns, resulting in missing group key information.",
+          "failed_assumption": "Assumed that setting the group key as an index after sorting would preserve it as a column, but it was removed from the columns.",
+          "applicability_conditions": "When sorting within groups and the output must preserve all original columns, including the group key, even after setting a multi-index.",
+          "non_applicability_conditions": "When the group key is not required as a column in the output, or when only index-based grouping is needed without column preservation.",
+          "repair_pattern": "After sorting and setting a multi-index, ensure the group key column is preserved by resetting the index and then setting the desired multi-index, or by re-inserting the group key column.",
+          "repair_steps": "1. Sort the DataFrame by group key and target column. 2. Reset the index to restore all columns. 3. Set the multi-index using group key and original index. 4. Ensure the group key column remains in the DataFrame columns.",
+          "preserve_constraints": "Output must be a DataFrame with shape, column names, and dtypes matching the expected result, including the group key column.",
+          "validation_check": "Verify that the output DataFrame includes the group key column, has the correct shape and columns, and matches the expected multi-index structure.",
+          "memory_eligible": "yes",
+          "confidence": "high"
+        }
+      }
+    ]
+  }
+]

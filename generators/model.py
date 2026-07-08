@@ -1,14 +1,23 @@
 from typing import List, Union, Optional, Literal
 import dataclasses
+import os
 
 from tenacity import (
+    RetryCallState,
     retry,
+    stop_after_delay,  # type: ignore
     stop_after_attempt,  # type: ignore
     wait_random_exponential,  # type: ignore
 )
 import openai
+from rich.console import Console
+from rich.panel import Panel
 
 MessageRole = Literal["system", "user", "assistant"]
+DEFAULT_REQUEST_TIMEOUT = float(os.getenv("OPENAI_REQUEST_TIMEOUT", "120"))
+DEFAULT_MAX_RETRIES = int(os.getenv("OPENAI_MAX_RETRIES", "4"))
+DEFAULT_RETRY_MAX_WAIT = float(os.getenv("OPENAI_RETRY_MAX_WAIT", "30"))
+DEFAULT_RETRY_MAX_SECONDS = float(os.getenv("OPENAI_RETRY_MAX_SECONDS", "300"))
 
 
 @dataclasses.dataclass()
@@ -25,15 +34,149 @@ def messages_to_str(messages: List[Message]) -> str:
     return "\n".join([message_to_str(message) for message in messages])
 
 
-@retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
+def _choice_value(choice, key: str, default=None):
+    if isinstance(choice, dict):
+        return choice.get(key, default)
+    return getattr(choice, key, default)
+
+
+def _message_content(message) -> str:
+    if message is None:
+        return ""
+    if isinstance(message, dict):
+        return message.get("content") or ""
+    return getattr(message, "content", None) or ""
+
+
+def _message_debug(message) -> str:
+    if message is None:
+        return "message=None"
+    if hasattr(message, "to_dict_recursive"):
+        return str(message.to_dict_recursive())
+    if isinstance(message, dict):
+        return str(message)
+    return repr(message)
+
+
+def _log_chat_choice(choice) -> None:
+    finish_reason = _choice_value(choice, "finish_reason", "unknown")
+    message = _choice_value(choice, "message")
+    content = _message_content(message)
+    lines = [
+        f"finish_reason: {finish_reason}",
+        f"content_length: {len(content)}",
+    ]
+    if not content.strip():
+        lines.append(f"message: {_message_debug(message)}")
+    panel = Panel("\n".join(lines), title="Chat response metadata", border_style="blue")
+    try:
+        from utils import print_v
+        print_v(panel)
+    except Exception:
+        Console().print(panel)
+
+
+def _log_retry(retry_state: RetryCallState) -> None:
+    exc = retry_state.outcome.exception() if retry_state.outcome else None
+    wait = retry_state.next_action.sleep if retry_state.next_action else 0
+    lines = [
+        f"attempt: {retry_state.attempt_number}",
+        f"next_wait_seconds: {round(wait, 2)}",
+    ]
+    if exc is not None:
+        lines.append(f"exception: {type(exc).__name__}: {exc}")
+    panel = Panel("\n".join(lines), title="Model API retry", border_style="yellow")
+    try:
+        from utils import print_v
+        print_v(panel)
+    except Exception:
+        Console().print(panel)
+
+
+def _log_model_request(model: str, max_tokens: int, num_comps: int) -> None:
+    lines = [
+        f"model: {model}",
+        f"request_timeout_seconds: {DEFAULT_REQUEST_TIMEOUT}",
+        f"max_retries: {DEFAULT_MAX_RETRIES}",
+        f"retry_max_seconds: {DEFAULT_RETRY_MAX_SECONDS}",
+        f"max_tokens: {max_tokens}",
+        f"num_comps: {num_comps}",
+    ]
+    panel = Panel("\n".join(lines), title="Model API request", border_style="cyan")
+    try:
+        from utils import print_v
+        print_v(panel)
+    except Exception:
+        Console().print(panel)
+
+
+def _log_embedding_request(model: str, num_inputs: int) -> None:
+    lines = [
+        f"model: {model}",
+        f"request_timeout_seconds: {DEFAULT_REQUEST_TIMEOUT}",
+        f"max_retries: {DEFAULT_MAX_RETRIES}",
+        f"retry_max_seconds: {DEFAULT_RETRY_MAX_SECONDS}",
+        f"num_inputs: {num_inputs}",
+    ]
+    panel = Panel("\n".join(lines), title="Embedding API request", border_style="cyan")
+    try:
+        from utils import print_v
+        print_v(panel)
+    except Exception:
+        Console().print(panel)
+
+
+MODEL_API_RETRY = retry(
+    wait=wait_random_exponential(min=1, max=DEFAULT_RETRY_MAX_WAIT),
+    stop=(
+        stop_after_attempt(DEFAULT_MAX_RETRIES)
+        | stop_after_delay(DEFAULT_RETRY_MAX_SECONDS)
+    ),
+    before_sleep=_log_retry,
+    reraise=True,
+)
+
+
+@MODEL_API_RETRY
+def gpt_embedding(model: str, texts: List[str]) -> List[List[float]]:
+    _log_embedding_request(model, len(texts))
+    # 使用 embedding 专用端点（独立于 chat 模型提供商）
+    # 例如 chat 用智谱 GLM，embedding 用 OpenAI text-embedding-3-small
+    from utils import EMBEDDING_API_KEY, EMBEDDING_API_BASE
+    _saved_key = openai.api_key
+    _saved_base = openai.api_base
+    try:
+        openai.api_key = EMBEDDING_API_KEY
+        openai.api_base = EMBEDDING_API_BASE
+        response = openai.Embedding.create(
+            model=model,
+            input=texts,
+            request_timeout=DEFAULT_REQUEST_TIMEOUT,
+        )
+    finally:
+        openai.api_key = _saved_key
+        openai.api_base = _saved_base
+    data = response["data"] if isinstance(response, dict) else response.data
+    ordered = sorted(
+        data,
+        key=lambda item: item.get("index") if isinstance(item, dict) else item.index,
+    )
+    return [
+        list(item.get("embedding") if isinstance(item, dict) else item.embedding)
+        for item in ordered
+    ]
+
+
+@MODEL_API_RETRY
 def gpt_completion(
         model: str,
         prompt: str,
-        max_tokens: int = 1024,
+        max_tokens: int = 4096,
         stop_strs: Optional[List[str]] = None,
         temperature: float = 0.0,
         num_comps=1,
 ) -> Union[List[str], str]:
+    _log_model_request(model, max_tokens, num_comps)
     response = openai.Completion.create(
         model=model,
         prompt=prompt,
@@ -44,6 +187,7 @@ def gpt_completion(
         presence_penalty=0.0,
         stop=stop_strs,
         n=num_comps,
+        request_timeout=DEFAULT_REQUEST_TIMEOUT,
     )
     if num_comps == 1:
         return response.choices[0].text  # type: ignore
@@ -51,14 +195,19 @@ def gpt_completion(
     return [choice.text for choice in response.choices]  # type: ignore
 
 
-@retry(wait=wait_random_exponential(min=1, max=180), stop=stop_after_attempt(6))
+@MODEL_API_RETRY
 def gpt_chat(
     model: str,
     messages: List[Message],
-    max_tokens: int = 1024,
+    max_tokens: int = 4096,
     temperature: float = 0.0,
     num_comps=1,
+    extra_body: Optional[dict] = None,
 ) -> Union[List[str], str]:
+    create_kwargs = {}
+    if extra_body is not None:
+        create_kwargs.update(extra_body)
+    _log_model_request(model, max_tokens, num_comps)
     response = openai.ChatCompletion.create(
         model=model,
         messages=[dataclasses.asdict(message) for message in messages],
@@ -68,11 +217,17 @@ def gpt_chat(
         frequency_penalty=0.0,
         presence_penalty=0.0,
         n=num_comps,
+        request_timeout=DEFAULT_REQUEST_TIMEOUT,
+        **create_kwargs,
     )
     if num_comps == 1:
-        return response.choices[0].message.content  # type: ignore
+        choice = response.choices[0]
+        _log_chat_choice(choice)
+        return _message_content(_choice_value(choice, "message"))  # type: ignore
 
-    return [choice.message.content for choice in response.choices]  # type: ignore
+    for choice in response.choices:
+        _log_chat_choice(choice)
+    return [_message_content(_choice_value(choice, "message")) for choice in response.choices]  # type: ignore
 
 
 class ModelBase():
@@ -83,10 +238,10 @@ class ModelBase():
     def __repr__(self) -> str:
         return f'{self.name}'
 
-    def generate_chat(self, messages: List[Message], max_tokens: int = 1024, temperature: float = 0.2, num_comps: int = 1) -> Union[List[str], str]:
+    def generate_chat(self, messages: List[Message], max_tokens: int = 4096, temperature: float = 0.2, num_comps: int = 1, extra_body: Optional[dict] = None) -> Union[List[str], str]:
         raise NotImplementedError
 
-    def generate(self, prompt: str, max_tokens: int = 1024, stop_strs: Optional[List[str]] = None, temperature: float = 0.0, num_comps=1) -> Union[List[str], str]:
+    def generate(self, prompt: str, max_tokens: int = 4096, stop_strs: Optional[List[str]] = None, temperature: float = 0.0, num_comps=1) -> Union[List[str], str]:
         raise NotImplementedError
 
 
@@ -95,13 +250,17 @@ class GPTChat(ModelBase):
         self.name = model_name
         self.is_chat = True
 
-    def generate_chat(self, messages: List[Message], max_tokens: int = 1024, temperature: float = 0.2, num_comps: int = 1) -> Union[List[str], str]:
-        return gpt_chat(self.name, messages, max_tokens, temperature, num_comps)
+    def generate_chat(self, messages: List[Message], max_tokens: int = 4096, temperature: float = 0.2, num_comps: int = 1, extra_body: Optional[dict] = None) -> Union[List[str], str]:
+        return gpt_chat(self.name, messages, max_tokens, temperature, num_comps, extra_body=extra_body)
 
 
 class GPT4(GPTChat):
     def __init__(self):
         super().__init__("gpt-4")
+
+class GPT4oMini(GPTChat):
+    def __init__(self):
+        super().__init__("gpt-4.1")
 
 
 class GPT35(GPTChat):
@@ -109,11 +268,27 @@ class GPT35(GPTChat):
         super().__init__("gpt-3.5-turbo")
 
 
+class GLMChat(GPTChat):
+    def __init__(self, model_name: str = "GLM-4.6V-Flash"):
+        # GLM uses an OpenAI-compatible ChatCompletion API at the configured base URL.
+        super().__init__(model_name)
+
+    def generate_chat(self, messages: List[Message], max_tokens: int = 4096, temperature: float = 0.2, num_comps: int = 1, extra_body: Optional[dict] = None) -> Union[List[str], str]:
+        return gpt_chat(
+            self.name,
+            messages,
+            max_tokens,
+            temperature,
+            num_comps,
+            extra_body=extra_body,
+        )
+
+
 class GPTDavinci(ModelBase):
     def __init__(self, model_name: str):
         self.name = model_name
 
-    def generate(self, prompt: str, max_tokens: int = 1024, stop_strs: Optional[List[str]] = None, temperature: float = 0, num_comps=1) -> Union[List[str], str]:
+    def generate(self, prompt: str, max_tokens: int = 4096, stop_strs: Optional[List[str]] = None, temperature: float = 0, num_comps=1) -> Union[List[str], str]:
         return gpt_completion(self.name, prompt, max_tokens, stop_strs, temperature, num_comps)
 
 
@@ -129,7 +304,7 @@ class HFModelBase(ModelBase):
         self.eos_token_id = eos_token_id if eos_token_id is not None else self.tokenizer.eos_token_id
         self.is_chat = True
 
-    def generate_chat(self, messages: List[Message], max_tokens: int = 1024, temperature: float = 0.2, num_comps: int = 1) -> Union[List[str], str]:
+    def generate_chat(self, messages: List[Message], max_tokens: int = 4096, temperature: float = 0.2, num_comps: int = 1, extra_body: Optional[dict] = None) -> Union[List[str], str]:
         # NOTE: HF does not like temp of 0.0.
         if temperature < 0.0001:
             temperature = 0.0001

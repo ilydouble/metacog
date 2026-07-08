@@ -27,6 +27,18 @@ def get_args():
                         help="Dataset adapter: `humaneval` or `ds1000`", default="humaneval")
     parser.add_argument(
         "--model", type=str, help="OpenAI models only for now. For best results, use GPT-4")
+    parser.add_argument(
+        "--embedding_model",
+        type=str,
+        default="text-embedding-3-small",
+        help="Embedding model name (always uses EMBEDDING_API_KEY/EMBEDDING_API_BASE endpoint).",
+    )
+    parser.add_argument(
+        "--reflection_model",
+        type=str,
+        default=None,
+        help="Model used for DS1000 self-reflection. Defaults to --model.",
+    )
     parser.add_argument("--pass_at_k", type=int,
                         help="Pass@k metric", default=1)
     parser.add_argument("--max_iters", type=int,
@@ -39,6 +51,10 @@ def get_args():
 
     parser.add_argument("--verbose", action='store_true',
                         help="To print live logs")
+    parser.add_argument("--episodic_memory", type=str, default="true",
+                        help="Whether to retrieve and inject episodic memory before solving (true/false)")
+    parser.add_argument("--procedural_skill", type=str, default="true",
+                        help="Whether to retrieve and inject procedural skill memory before solving (true/false)")
     # TODO: implement this
     # parser.add_argument("--is_resume", action='store_true', help="To resume run")
     # parser.add_argument("--resume_dir", type=str, help="If resume, the logging directory", default="")
@@ -70,7 +86,20 @@ def strategy_factory(strategy: str):
         raise ValueError(f"Strategy `{strategy}` is not supported")
 
 
+def _parse_bool_arg(val: str, arg_name: str) -> bool:
+    val_lower = val.strip().lower()
+    if val_lower in ("true", "1", "yes"):
+        return True
+    elif val_lower in ("false", "0", "no"):
+        return False
+    else:
+        raise ValueError(f"`{arg_name}` must be true/false, got: {val}")
+
+
 def run_ds1000_strategy(args, dataset, log_path):
+    episodic_memory = _parse_bool_arg(args.episodic_memory, "--episodic_memory")
+    procedural_skill = _parse_bool_arg(args.procedural_skill, "--procedural_skill")
+
     if args.strategy == "simple":
         return run_ds1000_simple(
             dataset=dataset,
@@ -78,49 +107,62 @@ def run_ds1000_strategy(args, dataset, log_path):
             pass_at_k=args.pass_at_k,
             log_path=log_path,
             verbose=args.verbose,
+            episodic_memory=episodic_memory,
+            procedural_skill=procedural_skill,
         )
     elif args.strategy == "reflexion":
         return run_ds1000_reflexion(
             dataset=dataset,
             model_name=args.model,
+            reflection_model_name=args.reflection_model or args.model,
             max_iters=args.max_iters,
             pass_at_k=args.pass_at_k,
             log_path=log_path,
             verbose=args.verbose,
+            episodic_memory=episodic_memory,
+            procedural_skill=procedural_skill,
         )
     else:
         raise ValueError("DS1000 adapter currently supports `simple` and `reflexion` only")
 
 
 def main(args):
-    # check if the root dir exists and create it if not
     if not os.path.exists(args.root_dir):
         os.makedirs(args.root_dir)
 
-    # get the dataset name
+    # 将 embedding_model 注入环境变量，供 memory 模块使用
+    embedding_model = getattr(args, "embedding_model", None) or "text-embedding-3-small"
+    os.environ["DS1000_EPISODIC_EMBEDDING_MODEL"] = embedding_model
+    os.environ["DS1000_PROCEDURAL_EMBEDDING_MODEL"] = embedding_model
+
     dataset_name = os.path.basename(args.dataset_path).replace("jsonl", "")
 
-    # check if log path already exists
     log_dir = os.path.join(args.root_dir, args.run_name)
-    # log_path = os.path.join(
-    #     log_dir, f"{dataset_name}_{args.strategy}_{args.max_iters}_{args.model}_pass_at_k_{args.pass_at_k}_{args.language}.jsonl")
-    log_path = os.path.join(log_dir, f"{args.log_name}.jsonl")
+
+    log_path = os.path.join(log_dir, f"{args.log_name}.json")
     stdout_log_path = os.path.join(log_dir, f"{args.log_name}.log")
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
-    # check if the strategy is valid
     run_strategy = strategy_factory(args.strategy)
 
     # print starting message
     print_v = make_printv(args.verbose, stdout_log_path)
     if args.verbose:
-        print_v(Panel(f"Strategy: [bold]{args.strategy}[/bold]\nPass@k: [bold]{args.pass_at_k}[/bold]", title="Configuration", border_style="green"))
+        config = (
+            f"Strategy: [bold]{args.strategy}[/bold]\n"
+            f"Model: [bold]{args.model}[/bold]\n"
+            f"Reflection model: [bold]{args.reflection_model or args.model}[/bold]\n"
+            f"Embedding model: [bold]{embedding_model}[/bold]\n"
+            f"Pass@k: [bold]{args.pass_at_k}[/bold]\n"
+            f"Episodic memory: [bold]{args.episodic_memory}[/bold]\n"
+            f"Procedural skill: [bold]{args.procedural_skill}[/bold]"
+        )
+        print_v(Panel(config, title="Configuration", border_style="green"))
     else:
         print(f"Logs will be saved in `{log_dir}`")
 
-    # load the dataset
-    print(f'Loading the dataset...')
+    print_v(f'Loading the dataset...')
     if args.dataset_path.endswith(".jsonl"):
         dataset = read_jsonl(args.dataset_path)
     elif args.dataset_path.endswith(".jsonl.gz"):
@@ -129,7 +171,7 @@ def main(args):
         raise ValueError(
             f"Dataset path `{args.dataset_path}` is not supported")
 
-    print(f"Loaded {len(dataset)} examples")
+    print_v(f"Loaded {len(dataset)} examples")
     if args.dataset_type == "ds1000":
         run_ds1000_strategy(args, dataset, log_path)
         # print(f"Done! Check out the logs in `{log_path}`")

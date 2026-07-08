@@ -1,0 +1,164 @@
+[
+  {
+    "prompt": "Problem:\nI'm wondering if there is a simpler, memory efficient way to select a subset of rows and columns from a pandas DataFrame.\n\n\nFor instance, given this dataframe:\n\n\n\n\ndf = DataFrame(np.random.rand(4,5), columns = list('abcde'))\nprint df\n          a         b         c         d         e\n0  0.945686  0.000710  0.909158  0.892892  0.326670\n1  0.919359  0.667057  0.462478  0.008204  0.473096\n2  0.976163  0.621712  0.208423  0.980471  0.048334\n3  0.459039  0.788318  0.309892  0.100539  0.753992\nI want only those rows in which the value for column 'c' is greater than 0.45, but I only need columns 'a', 'b' and 'e' for those rows.\n\n\nThis is the method that I've come up with - perhaps there is a better \"pandas\" way?\n\n\n\n\nlocs = [df.columns.get_loc(_) for _ in ['a', 'b', 'e']]\nprint df[df.c > 0.45][locs]\n          a         b         e\n0  0.945686  0.000710  0.326670\n1  0.919359  0.667057  0.473096\nMy final goal is to convert the result to a numpy array to pass into an sklearn regression algorithm, so I will use the code above like this:\n\n\n\n\ntraining_set = array(df[df.c > 0.45][locs])\n... and that peeves me since I end up with a huge array copy in memory. Perhaps there's a better way for that too?\n\nA:\n<code>\nimport pandas as pd\nimport numpy as np\n\ndf = pd.DataFrame(np.random.rand(4,5), columns = list('abcde'))\ncolumns = ['a','b','e']\n</code>\nresult = ... # put solution in this variable\nBEGIN SOLUTION\n<code>\n",
+    "reference_code": "result = df.loc[df['c']>0.45,columns]\n",
+    "metadata": {
+      "problem_id": 69,
+      "library_problem_id": 69,
+      "library": "Pandas",
+      "test_case_cnt": 2,
+      "perturbation_type": "Semantic",
+      "perturbation_origin_id": 68
+    },
+    "code_context": "import pandas as pd\nimport numpy as np\nimport copy\n\n\ndef generate_test_case(test_case_id):\n    def generate_ans(data):\n        data = data\n        df, columns = data\n        return df.loc[df[\"c\"] > 0.45, columns]\n\n    def define_test_input(test_case_id):\n        if test_case_id == 1:\n            np.random.seed(2)\n            df = pd.DataFrame(np.random.rand(4, 5), columns=list(\"abcde\"))\n            columns = [\"a\", \"b\", \"e\"]\n        if test_case_id == 2:\n            np.random.seed(42)\n            df = pd.DataFrame(np.random.rand(4, 5), columns=list(\"abcde\"))\n            columns = [\"a\", \"b\", \"e\"]\n        return df, columns\n\n    test_input = define_test_input(test_case_id)\n    expected_result = generate_ans(copy.deepcopy(test_input))\n    return test_input, expected_result\n\n\ndef exec_test(result, ans):\n    try:\n        pd.testing.assert_frame_equal(result, ans, check_dtype=False)\n        return 1\n    except:\n        return 0\n\n\nexec_context = r\"\"\"\nimport pandas as pd\nimport numpy as np\ndf, columns = test_input\n[insert]\n\"\"\"\n\n\ndef test_execution(solution: str):\n    code = exec_context.replace(\"[insert]\", solution)\n    for i in range(2):\n        test_input, expected_result = generate_test_case(i + 1)\n        test_env = {\"test_input\": test_input}\n        exec(code, test_env)\n        assert exec_test(test_env[\"result\"], expected_result)\n",
+    "is_solved": true,
+    "reflections": [
+      "{\"library\": \"pandas\", \"task_family\": \"pandas conditional row selection and column subset\", \"api_concepts\": \"DataFrame.loc, boolean indexing, column selection\", \"task_intent\": \"Select rows where column 'c' > 0.45 and only columns 'a', 'b', and 'e', returning a DataFrame.\", \"prompt_evidence\": \"I want only those rows in which the value for column 'c' is greater than 0.45, but I only need columns 'a', 'b' and 'e' for those rows.\", \"observed_failure\": \"actual_result is a numpy ndarray, but expected_result is a DataFrame with columns ['a', 'b', 'e']\", \"bug_pattern\": \"Converting the result to a numpy array when the prompt requires a DataFrame output, losing column names and DataFrame structure.\", \"failed_assumption\": \"Assumed the output should be a numpy array, but the prompt and tests require a DataFrame.\", \"applicability_conditions\": \"When the task requires selecting rows and columns from a DataFrame based on a condition, and the output must remain a DataFrame.\", \"non_applicability_conditions\": \"When the output is explicitly required to be a numpy array or another type, or when column names and DataFrame structure are not needed.\", \"repair_pattern\": \"Return the filtered DataFrame directly without converting to numpy array, preserving column names and DataFrame structure.\", \"repair_steps\": \"Use df.loc[condition, columns] to select the desired rows and columns, and assign the result directly to the output variable without calling .to_numpy().\", \"preserve_constraints\": \"Output type must be DataFrame, shape and column names must match the selected columns, and the result must be assigned to the specified variable.\", \"validation_check\": \"Verify that the output is a DataFrame with the correct shape, column names, and values matching the filtered and selected subset.\", \"memory_eligible\": \"yes\", \"confidence\": \"high\"}"
+    ],
+    "reflection_attempt_indices": [
+      0
+    ],
+    "implementations": [
+      "result = df.loc[df['c'] > 0.45, columns].to_numpy()",
+      "result = df.loc[df['c'] > 0.45, columns]"
+    ],
+    "test_feedback": [
+      "Tests passed:\n\nTests failed:\nAssertionError\n  File \"/Users/liudada/Desktop/programming/executors/ds1000_executor.py\", line 48, in _run_test\n    function_with_timeout(test_execution, (solution,), timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 40, in function_with_timeout\n    thread.join(timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 27, in join\n    raise self.exc\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 20, in run\n    self.ret = self._target(*self._args, **self._kwargs)\nAssertionError\n\n\nDS1000 diagnostic outputs:\nTestCase 1 failed (public example).\nactual_result: type=ndarray\nshape=(3, 3)\nvalue=array([[0.4359949 , 0.02592623, 0.4203678 ],\n       [0.33033482, 0.20464863, 0.26682728],\n       [0.78533515, 0.85397529, 0.07964548]])\nexpected_result: type=DataFrame\nshape=(3, 3)\ncolumns=['a', 'b', 'e']\ndtypes=a    float64\nb    float64\ne    float64\ndtype: object\nvalue=          a         b         e\n0  0.435995  0.025926  0.420368\n1  0.330335  0.204649  0.266827\n3  0.785335  0.853975  0.079645\n",
+      "Tests passed:\nDS1000 code_context test\n\nTests failed:"
+    ],
+    "procedural_skill": "{\"library\": \"pandas\", \"task_family\": \"Filtering\", \"retrieval_key\": \"conditional row and column selection preserving DataFrame\", \"api_concepts\": \"DataFrame.loc, boolean indexing, column subset selection\", \"procedure\": \"1. Define the condition for selecting rows based on column values. 2. Specify the list of columns to retain. 3. Use a selection method to filter rows according to the condition and select only the specified columns. 4. Return the resulting DataFrame without altering its structure or converting its type.\", \"avoid_assumption\": \"Assuming that the output should be converted to a different type (e.g., numpy array) when the task requires preserving DataFrame structure and metadata.\", \"applicability_conditions\": \"When you need to extract a subset of rows based on a condition and a subset of columns from a DataFrame, and the output must remain a DataFrame.\", \"non_applicability_conditions\": \"When the output is explicitly required to be a different type (e.g., numpy array), or when column names and DataFrame structure are not needed.\", \"preserve_constraints\": \"Preserve DataFrame type, column names, row and column ordering, and index alignment; do not alter unaffected data.\", \"verification\": \"The output is a DataFrame containing only the selected rows and columns, with correct structure, column names, and preserved data integrity.\", \"confidence\": \"high\"}",
+    "solution": "result = df.loc[df['c'] > 0.45, columns]",
+    "memory_store_paths": {
+      "episodic": "root/gpt-4.1-memory/2/memory/b2.episodic_memory.json",
+      "episodic_archive": "root/gpt-4.1-memory/2/memory/b2.episodic_archive.json",
+      "procedural": "root/gpt-4.1-memory/2/memory/b2.procedural_memory.json",
+      "successful_examples": null
+    }
+  },
+  {
+    "prompt": "Problem:\nI have a table like this.\nuser    01/12/15    02/12/15 someBool\nu1      100         None      True\nu2      200        -100      False\nu3     None          200      True\n\n\nI want to repartition the date columns into two columns date and value like this.\nuser    date       value   someBool\nu1      01/12/15   100     True\nu2      01/12/15   200     False\nu2      02/12/15  -100     False\nu3      02/12/15   200     True\n\n\nHow to do this in python ?\nIs pivot_table in pandas helpful? \nIf possible provide code/psuedo code & give details on python version. \n\n\nA:\n<code>\nimport pandas as pd\n\n\ndf = pd.DataFrame({'user': ['u1', 'u2', 'u3'],\n                   '01/12/15': [100, 200, None],\n                   '02/12/15': [None, -100, 200],\n                   'someBool': [True, False, True]})\n</code>\ndf = ... # put solution in this variable\nBEGIN SOLUTION\n<code>\n",
+    "reference_code": "def g(df):\n    df = df.set_index(['user','someBool']).stack().reset_index(name='value').rename(columns={'level_2':'date'})\n    return df[['user', 'date', 'value', 'someBool']]\ndf = g(df.copy())\n",
+    "metadata": {
+      "problem_id": 67,
+      "library_problem_id": 67,
+      "library": "Pandas",
+      "test_case_cnt": 2,
+      "perturbation_type": "Difficult-Rewrite",
+      "perturbation_origin_id": 65
+    },
+    "code_context": "import pandas as pd\nimport numpy as np\nimport copy\n\n\ndef generate_test_case(test_case_id):\n    def generate_ans(data):\n        df = data\n        df = (\n            df.set_index([\"user\", \"someBool\"])\n            .stack()\n            .reset_index(name=\"value\")\n            .rename(columns={\"level_2\": \"date\"})\n        )\n        return df[[\"user\", \"date\", \"value\", \"someBool\"]]\n\n    def define_test_input(test_case_id):\n        if test_case_id == 1:\n            df = pd.DataFrame(\n                {\n                    \"user\": [\"u1\", \"u2\", \"u3\"],\n                    \"01/12/15\": [100, 200, None],\n                    \"02/12/15\": [None, -100, 200],\n                    \"someBool\": [True, False, True],\n                }\n            )\n        if test_case_id == 2:\n            df = pd.DataFrame(\n                {\n                    \"user\": [\"u1\", \"u2\", \"u3\"],\n                    \"01/10/22\": [100, 200, None],\n                    \"02/10/22\": [None, -100, 200],\n                    \"someBool\": [True, False, True],\n                }\n            )\n        return df\n\n    test_input = define_test_input(test_case_id)\n    expected_result = generate_ans(copy.deepcopy(test_input))\n    return test_input, expected_result\n\n\ndef exec_test(result, ans):\n    try:\n        pd.testing.assert_frame_equal(result, ans, check_dtype=False)\n        return 1\n    except:\n        return 0\n\n\nexec_context = r\"\"\"\nimport pandas as pd\nimport numpy as np\ndf = test_input\n[insert]\nresult = df\n\"\"\"\n\n\ndef test_execution(solution: str):\n    code = exec_context.replace(\"[insert]\", solution)\n    for i in range(2):\n        test_input, expected_result = generate_test_case(i + 1)\n        test_env = {\"test_input\": test_input}\n        exec(code, test_env)\n        assert exec_test(test_env[\"result\"], expected_result)\n",
+    "is_solved": true,
+    "reflections": [
+      "{\"library\": \"pandas\", \"task_family\": \"pandas melt reshape column order preservation\", \"api_concepts\": \"melt, dropna, sort_values, reset_index, column order\", \"task_intent\": \"Reshape wide date columns into long format with 'date' and 'value' columns, preserving original column order.\", \"prompt_evidence\": \"\\\"I want to repartition the date columns into two columns date and value like this. user    date       value   someBool\\\"\", \"observed_failure\": \"actual_result columns=['user', 'someBool', 'date', 'value'] vs expected_result columns=['user', 'date', 'value', 'someBool']\", \"bug_pattern\": \"The code produces correct data but does not match the required column order in the output DataFrame.\", \"failed_assumption\": \"Assumed that the column order after melt and dropna does not matter or will match the example automatically.\", \"applicability_conditions\": \"Whenever a pandas DataFrame is reshaped (e.g., with melt) and the prompt or test expects a specific column order in the output.\", \"non_applicability_conditions\": \"When the prompt or tests do not specify or require a particular column order, or when the output is not a DataFrame.\", \"repair_pattern\": \"Reorder the columns of the resulting DataFrame to match the required order as specified in the prompt or expected output.\", \"repair_steps\": \"After all transformations, select and assign the DataFrame columns in the required order, e.g., df = df[['user', 'date', 'value', 'someBool']].\", \"preserve_constraints\": \"Do not change the data, row order, or column values; only adjust the column order to match the specification.\", \"validation_check\": \"Check that the output DataFrame columns exactly match the required order: ['user', 'date', 'value', 'someBool'], and that the data remains unchanged.\", \"memory_eligible\": \"yes\", \"confidence\": \"high\"}"
+    ],
+    "reflection_attempt_indices": [
+      0
+    ],
+    "implementations": [
+      "df = df.melt(id_vars=['user', 'someBool'], var_name='date', value_name='value').dropna(subset=['value']).sort_values(['user', 'date']).reset_index(drop=True)",
+      "df = df.melt(id_vars=['user', 'someBool'], var_name='date', value_name='value')\ndf = df.dropna(subset=['value']).sort_values(['user', 'date']).reset_index(drop=True)\ndf = df[['user', 'date', 'value', 'someBool']]\nresult = df"
+    ],
+    "test_feedback": [
+      "Tests passed:\n\nTests failed:\nAssertionError\n  File \"/Users/liudada/Desktop/programming/executors/ds1000_executor.py\", line 48, in _run_test\n    function_with_timeout(test_execution, (solution,), timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 40, in function_with_timeout\n    thread.join(timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 27, in join\n    raise self.exc\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 20, in run\n    self.ret = self._target(*self._args, **self._kwargs)\nAssertionError\n\n\nDS1000 diagnostic outputs:\nTestCase 1 failed (public example).\nactual_result: type=DataFrame\nshape=(4, 4)\ncolumns=['user', 'someBool', 'date', 'value']\ndtypes=user         object\nsomeBool       bool\ndate         object\nvalue       float64\ndtype: object\nvalue=  user  someBool      date  value\n0   u1      True  01/12/15  100.0\n1   u2     False  01/12/15  200.0\n2   u2     False  02/12/15 -100.0\n3   u3      True  02/12/15  200.0\nexpected_result: type=DataFrame\nshape=(4, 4)\ncolumns=['user', 'date', 'value', 'someBool']\ndtypes=user         object\ndate         object\nvalue       float64\nsomeBool       bool\ndtype: object\nvalue=  user      date  value  someBool\n0   u1  01/12/15  100.0      True\n1   u2  01/12/15  200.0     False\n2   u2  02/12/15 -100.0     False\n3   u3  02/12/15  200.0      True\n",
+      "Tests passed:\nDS1000 code_context test\n\nTests failed:"
+    ],
+    "procedural_skill": "{\"library\": \"pandas\", \"task_family\": \"Reshaping\", \"retrieval_key\": \"reorder columns after reshaping to match specification\", \"api_concepts\": \"melt, column selection, assignment\", \"procedure\": \"1. Perform the desired reshaping or transformation operation (e.g., melt, pivot, stack, etc.). 2. Identify the required column order as specified by the prompt, documentation, or downstream requirements. 3. Reorder the columns of the resulting DataFrame to match the required order by explicit selection. 4. Assign the reordered DataFrame to the output variable. 5. Ensure that only column order is changed, not the data or row order.\", \"avoid_assumption\": \"Assuming that reshaping operations automatically preserve or match the required column order.\", \"applicability_conditions\": \"When the output DataFrame must match a specific column order after reshaping or transformation, as required by prompts, tests, or downstream consumers.\", \"non_applicability_conditions\": \"When column order is not specified, not relevant, or the output is not a DataFrame.\", \"preserve_constraints\": \"Preserve all data values, row order, and unaffected columns; only adjust column order.\", \"verification\": \"The output DataFrame columns exactly match the required order, and all data and row order remain unchanged.\", \"confidence\": \"high\"}",
+    "solution": "df = df.melt(id_vars=['user', 'someBool'], var_name='date', value_name='value')\ndf = df.dropna(subset=['value']).sort_values(['user', 'date']).reset_index(drop=True)\ndf = df[['user', 'date', 'value', 'someBool']]\nresult = df",
+    "memory_store_paths": {
+      "episodic": "root/gpt-4.1-memory/2/memory/b2.episodic_memory.json",
+      "episodic_archive": "root/gpt-4.1-memory/2/memory/b2.episodic_archive.json",
+      "procedural": "root/gpt-4.1-memory/2/memory/b2.procedural_memory.json",
+      "successful_examples": null
+    }
+  },
+  {
+    "prompt": "Problem:\nI am trying to delete rows from a Pandas dataframe using a list of row names, but it can't be done. Here is an example\n\n\n# df\n    alleles  chrom  pos strand  assembly#  center  protLSID  assayLSID  \nrs#\nTP3      A/C      0    3      +        NaN     NaN       NaN        NaN\nTP7      A/T      0    7      +        NaN     NaN       NaN        NaN\nTP12     T/A      0   12      +        NaN     NaN       NaN        NaN\nTP15     C/A      0   15      +        NaN     NaN       NaN        NaN\nTP18     C/T      0   18      +        NaN     NaN       NaN        NaN\n\n\ntest = ['TP3','TP12','TP18']\nAny help would be appreciated.\n\nA:\n<code>\nimport pandas as pd\nimport io\n\ndata = io.StringIO(\"\"\"\nrs  alleles  chrom  pos strand  assembly#  center  protLSID  assayLSID\nTP3      A/C      0    3      +        NaN     NaN       NaN        NaN\nTP7      A/T      0    7      +        NaN     NaN       NaN        NaN\nTP12     T/A      0   12      +        NaN     NaN       NaN        NaN\nTP15     C/A      0   15      +        NaN     NaN       NaN        NaN\nTP18     C/T      0   18      +        NaN     NaN       NaN        NaN\n\"\"\")\ndf = pd.read_csv(data, delim_whitespace=True).set_index('rs')\ntest = ['TP3', 'TP7', 'TP18']\n</code>\nresult = ... # put solution in this variable\nBEGIN SOLUTION\n<code>\n",
+    "reference_code": "result = df.drop(test, inplace = False)\n",
+    "metadata": {
+      "problem_id": 119,
+      "library_problem_id": 119,
+      "library": "Pandas",
+      "test_case_cnt": 1,
+      "perturbation_type": "Semantic",
+      "perturbation_origin_id": 117
+    },
+    "code_context": "import pandas as pd\nimport numpy as np\nimport io\nimport copy\n\n\ndef generate_test_case(test_case_id):\n    def generate_ans(data):\n        data = data\n        df, test = data\n        return df.drop(test, inplace=False)\n\n    def define_test_input(test_case_id):\n        if test_case_id == 1:\n            data = io.StringIO(\n                \"\"\"\n            rs  alleles  chrom  pos strand  assembly#  center  protLSID  assayLSID\n            TP3      A/C      0    3      +        NaN     NaN       NaN        NaN\n            TP7      A/T      0    7      +        NaN     NaN       NaN        NaN\n            TP12     T/A      0   12      +        NaN     NaN       NaN        NaN\n            TP15     C/A      0   15      +        NaN     NaN       NaN        NaN\n            TP18     C/T      0   18      +        NaN     NaN       NaN        NaN\n            \"\"\"\n            )\n            df = pd.read_csv(data, delim_whitespace=True).set_index(\"rs\")\n            test = [\"TP3\", \"TP7\", \"TP18\"]\n        return df, test\n\n    test_input = define_test_input(test_case_id)\n    expected_result = generate_ans(copy.deepcopy(test_input))\n    return test_input, expected_result\n\n\ndef exec_test(result, ans):\n    try:\n        pd.testing.assert_frame_equal(result, ans, check_dtype=False)\n        return 1\n    except:\n        return 0\n\n\nexec_context = r\"\"\"\nimport pandas as pd\nimport numpy as np\nimport io\ndf, test = test_input\n[insert]\n\"\"\"\n\n\ndef test_execution(solution: str):\n    code = exec_context.replace(\"[insert]\", solution)\n    for i in range(1):\n        test_input, expected_result = generate_test_case(i + 1)\n        test_env = {\"test_input\": test_input}\n        exec(code, test_env)\n        assert exec_test(test_env[\"result\"], expected_result)\n",
+    "is_solved": true,
+    "reflections": [],
+    "reflection_attempt_indices": [],
+    "implementations": [
+      "result = df.drop(test)"
+    ],
+    "test_feedback": [
+      "Tests passed:\nDS1000 code_context test\n\nTests failed:"
+    ],
+    "procedural_skill": null,
+    "solution": "result = df.drop(test)",
+    "memory_store_paths": {
+      "episodic": null,
+      "episodic_archive": null,
+      "procedural": null,
+      "successful_examples": "root/gpt-4.1-memory/2/memory/b2.successful_examples.json"
+    }
+  },
+  {
+    "prompt": "Problem:\nContext\nI'm trying to merge two big CSV files together.\nProblem\nLet's say I've one Pandas DataFrame like the following...\nEntityNum    foo   ...\n------------------------\n1001.01      100\n1002.02       50\n1003.03      200\n\n\nAnd another one like this...\nEntityNum    a_col    b_col\n-----------------------------------\n1001.01      alice        7  \n1002.02        bob        8\n1003.03        777        9\n\n\nI'd like to join them like this: \nEntityNum    foo    a_col\n----------------------------\n1001.01      100    alice\n1002.02       50      bob\n1003.03      200      777\n\n\nSo Keep in mind, I don't want b_col in the final result. How do I I accomplish this with Pandas? \nUsing SQL, I should probably have done something like: \nSELECT t1.*, t2.a_col FROM table_1 as t1\n                      LEFT JOIN table_2 as t2\n                      ON t1.EntityNum = t2.EntityNum; \n\n\nSearch\nI know it is possible to use merge. This is what I've tried: \nimport pandas as pd\ndf_a = pd.read_csv(path_a, sep=',')\ndf_b = pd.read_csv(path_b, sep=',')\ndf_c = pd.merge(df_a, df_b, on='EntityNumber')\n\n\nBut I'm stuck when it comes to avoiding some of the unwanted columns in the final dataframe.\n\n\nA:\n<code>\nimport pandas as pd\n\n\ndf_a = pd.DataFrame({'EntityNum':[1001.01,1002.02,1003.03],'foo':[100,50,200]})\ndf_b = pd.DataFrame({'EntityNum':[1001.01,1002.02,1003.03],'a_col':['alice','bob','777'],'b_col':[7,8,9]})\n</code>\nresult = ... # put solution in this variable\nBEGIN SOLUTION\n<code>\n",
+    "reference_code": "def g(df_a, df_b):\n    return df_a[['EntityNum', 'foo']].merge(df_b[['EntityNum', 'a_col']], on='EntityNum', how='left')\n\nresult = g(df_a.copy(), df_b.copy())\n",
+    "metadata": {
+      "problem_id": 289,
+      "library_problem_id": 289,
+      "library": "Pandas",
+      "test_case_cnt": 2,
+      "perturbation_type": "Origin",
+      "perturbation_origin_id": 289
+    },
+    "code_context": "import pandas as pd\nimport numpy as np\nimport copy\n\n\ndef generate_test_case(test_case_id):\n    def generate_ans(data):\n        data = data\n        df_a, df_b = data\n        return df_a[[\"EntityNum\", \"foo\"]].merge(\n            df_b[[\"EntityNum\", \"a_col\"]], on=\"EntityNum\", how=\"left\"\n        )\n\n    def define_test_input(test_case_id):\n        if test_case_id == 1:\n            df_a = pd.DataFrame(\n                {\"EntityNum\": [1001.01, 1002.02, 1003.03], \"foo\": [100, 50, 200]}\n            )\n            df_b = pd.DataFrame(\n                {\n                    \"EntityNum\": [1001.01, 1002.02, 1003.03],\n                    \"a_col\": [\"alice\", \"bob\", \"777\"],\n                    \"b_col\": [7, 8, 9],\n                }\n            )\n        if test_case_id == 2:\n            df_a = pd.DataFrame(\n                {\"EntityNum\": [1001.01, 1002.02, 1003.03], \"foo\": [100, 50, 200]}\n            )\n            df_b = pd.DataFrame(\n                {\n                    \"EntityNum\": [1001.01, 1002.02, 1003.03],\n                    \"a_col\": [\"666\", \"bob\", \"alice\"],\n                    \"b_col\": [7, 8, 9],\n                }\n            )\n        return df_a, df_b\n\n    test_input = define_test_input(test_case_id)\n    expected_result = generate_ans(copy.deepcopy(test_input))\n    return test_input, expected_result\n\n\ndef exec_test(result, ans):\n    try:\n        pd.testing.assert_frame_equal(result, ans, check_dtype=False)\n        return 1\n    except:\n        return 0\n\n\nexec_context = r\"\"\"\nimport pandas as pd\nimport numpy as np\ndf_a, df_b = test_input\n[insert]\n\"\"\"\n\n\ndef test_execution(solution: str):\n    code = exec_context.replace(\"[insert]\", solution)\n    for i in range(2):\n        test_input, expected_result = generate_test_case(i + 1)\n        test_env = {\"test_input\": test_input}\n        exec(code, test_env)\n        assert exec_test(test_env[\"result\"], expected_result)\n",
+    "is_solved": true,
+    "reflections": [],
+    "reflection_attempt_indices": [],
+    "implementations": [
+      "result = pd.merge(df_a, df_b[['EntityNum', 'a_col']], on='EntityNum')"
+    ],
+    "test_feedback": [
+      "Tests passed:\nDS1000 code_context test\n\nTests failed:"
+    ],
+    "procedural_skill": null,
+    "solution": "result = pd.merge(df_a, df_b[['EntityNum', 'a_col']], on='EntityNum')",
+    "memory_store_paths": {
+      "episodic": null,
+      "episodic_archive": null,
+      "procedural": null,
+      "successful_examples": "root/gpt-4.1-memory/2/memory/b2.successful_examples.json"
+    }
+  },
+  {
+    "prompt": "Problem:\nI have a dataframe with numerous columns (≈30) from an external source (csv file) but several of them have no value or always the same. Thus, I would to see quickly the value_counts for each column. How can i do that?\nFor example\n  id, temp, name\n1 34, null, mark\n2 22, null, mark\n3 34, null, mark\n\nPlease return a String like this:\n\n---- id ---\n34    2\n22    1\nName: id, dtype: int64\n---- temp ---\nnull    3\nName: temp, dtype: int64\n---- name ---\nmark    3\nName: name, dtype: int64\n\nSo I would know that temp is irrelevant and name is not interesting (always the same)\n\nA:\n<code>\nimport pandas as pd\n\ndf = pd.DataFrame(data=[[34, 'null', 'mark'], [22, 'null', 'mark'], [34, 'null', 'mark']], columns=['id', 'temp', 'name'], index=[1, 2, 3])\n</code>\nresult = ... # put solution in this variable\nBEGIN SOLUTION\n<code>\n",
+    "reference_code": "def g(df):\n    s = ''\n    for c in df.columns:\n        s += \"---- %s ---\" % c\n        s += \"\\n\"\n        s += str(df[c].value_counts())\n        s += \"\\n\"\n    return s\n\nresult = g(df.copy())\n",
+    "metadata": {
+      "problem_id": 41,
+      "library_problem_id": 41,
+      "library": "Pandas",
+      "test_case_cnt": 2,
+      "perturbation_type": "Difficult-Rewrite",
+      "perturbation_origin_id": 39
+    },
+    "code_context": "import pandas as pd\nimport numpy as np\nimport copy\n\n\ndef generate_test_case(test_case_id):\n    def generate_ans(data):\n        df = data\n        s = \"\"\n        for c in df.columns:\n            s += \"---- %s ---\" % c\n            s += \"\\n\"\n            s += str(df[c].value_counts())\n            s += \"\\n\"\n        return s\n\n    def define_test_input(test_case_id):\n        if test_case_id == 1:\n            df = pd.DataFrame(\n                data=[[34, \"null\", \"mark\"], [22, \"null\", \"mark\"], [34, \"null\", \"mark\"]],\n                columns=[\"id\", \"temp\", \"name\"],\n                index=[1, 2, 3],\n            )\n        elif test_case_id == 2:\n            df = pd.DataFrame(\n                data=[[11, \"null\", \"mark\"], [14, \"null\", \"mark\"], [51, \"null\", \"mark\"]],\n                columns=[\"id\", \"temp\", \"name\"],\n                index=[1, 2, 3],\n            )\n        return df\n\n    test_input = define_test_input(test_case_id)\n    expected_result = generate_ans(copy.deepcopy(test_input))\n    return test_input, expected_result\n\n\ndef exec_test(result, ans):\n    try:\n        assert result == ans\n        return 1\n    except:\n        return 0\n\n\nexec_context = r\"\"\"\nimport pandas as pd\nimport numpy as np\ndf = test_input\n[insert]\n\"\"\"\n\n\ndef test_execution(solution: str):\n    code = exec_context.replace(\"[insert]\", solution)\n    for i in range(2):\n        test_input, expected_result = generate_test_case(i + 1)\n        test_env = {\"test_input\": test_input}\n        exec(code, test_env)\n        assert exec_test(test_env[\"result\"], expected_result)\n",
+    "is_solved": true,
+    "reflections": [],
+    "reflection_attempt_indices": [],
+    "implementations": [
+      "result = \"\"\nfor col in df.columns:\n    result += f\"---- {col} ---\\n\"\n    result += str(df[col].value_counts()) + \"\\n\""
+    ],
+    "test_feedback": [
+      "Tests passed:\nDS1000 code_context test\n\nTests failed:"
+    ],
+    "procedural_skill": null,
+    "solution": "result = \"\"\nfor col in df.columns:\n    result += f\"---- {col} ---\\n\"\n    result += str(df[col].value_counts()) + \"\\n\"",
+    "memory_store_paths": {
+      "episodic": null,
+      "episodic_archive": null,
+      "procedural": null,
+      "successful_examples": "root/gpt-4.1-memory/2/memory/b2.successful_examples.json"
+    }
+  }
+]

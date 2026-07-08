@@ -1,0 +1,26 @@
+[
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "episodic",
+    "created_at": "2026-06-17T09:15:29.326170+00:00",
+    "episode_id": "ebe03f03301a5a8e62fe6c01",
+    "retrieval_text": "library: Pandas\ntask_family: pandas groupby sort and preserve columns\ntask_intent: Sort each group in a DataFrame by a column and preserve all original columns including the group key.\nfailure_signature: After sorting and setting a multi-index, the group key column is dropped from the columns, resulting in missing group key information.\nrepair_action: After sorting and setting a multi-index, ensure the group key column is preserved by resetting the index and then setting the desired multi-index, or by re-inserting the group key column.",
+    "library": "Pandas",
+    "task_family": "pandas groupby sort and preserve columns",
+    "task_intent": "Sort each group in a DataFrame by a column and preserve all original columns including the group key.",
+    "error_type": "AssertionError",
+    "failure_signature": "After sorting and setting a multi-index, the group key column is dropped from the columns, resulting in missing group key information.",
+    "failed_assumption": "Assumed that setting the group key as an index after sorting would preserve it as a column, but it was removed from the columns.",
+    "repair_action": "After sorting and setting a multi-index, ensure the group key column is preserved by resetting the index and then setting the desired multi-index, or by re-inserting the group key column.",
+    "failure_snapshot": {
+      "type": "shape_error",
+      "location": "output shape",
+      "observed": "(5, 2)",
+      "expected": "(5, 3)"
+    },
+    "repair_success": false,
+    "archive_ref": "ebe03f03301a5a8e62fe6c01",
+    "item_index": 0,
+    "problem_id": 160
+  }
+]

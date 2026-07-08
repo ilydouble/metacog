@@ -1,0 +1,240 @@
+[
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "episodic_archive",
+    "created_at": "2026-06-20T08:20:35.144646+00:00",
+    "episode_id": "499420481eb3337b8e3c6da8",
+    "dataset": "ds1000",
+    "item_index": 0,
+    "problem_id": 160,
+    "library_problem_id": 160,
+    "library": "Pandas",
+    "perturbation_type": "Origin",
+    "perturbation_origin_id": 160,
+    "prompt": "Problem:\nHow do I apply sort to a pandas groupby operation? The command below returns an error saying that 'bool' object is not callable\nimport pandas as pd\ndf.groupby('cokey').sort('A')\ncokey       A   B\n11168155    18  56\n11168155    0   18\n11168155    56  96\n11168156    96  152\n11168156    0   96\n\n\ndesired:\n               cokey   A    B\ncokey                        \n11168155 1  11168155   0   18\n         0  11168155  18   56\n         2  11168155  56   96\n11168156 4  11168156   0   96\n         3  11168156  96  152\n\n\n\n\nA:\n<code>\nimport pandas as pd\n\n\ndf = pd.DataFrame({'cokey':[11168155,11168155,11168155,11168156,11168156],\n                   'A':[18,0,56,96,0],\n                   'B':[56,18,96,152,96]})\n</code>\nresult = ... # put solution in this variable\nBEGIN SOLUTION\n<code>\n",
+    "code_context": "import pandas as pd\nimport numpy as np\nimport copy\n\n\ndef generate_test_case(test_case_id):\n    def generate_ans(data):\n        df = data\n        return df.groupby(\"cokey\").apply(pd.DataFrame.sort_values, \"A\")\n\n    def define_test_input(test_case_id):\n        if test_case_id == 1:\n            df = pd.DataFrame(\n                {\n                    \"cokey\": [11168155, 11168155, 11168155, 11168156, 11168156],\n                    \"A\": [18, 0, 56, 96, 0],\n                    \"B\": [56, 18, 96, 152, 96],\n                }\n            )\n        if test_case_id == 2:\n            df = pd.DataFrame(\n                {\n                    \"cokey\": [155, 155, 155, 156, 156],\n                    \"A\": [18, 0, 56, 96, 0],\n                    \"B\": [56, 18, 96, 152, 96],\n                }\n            )\n        return df\n\n    test_input = define_test_input(test_case_id)\n    expected_result = generate_ans(copy.deepcopy(test_input))\n    return test_input, expected_result\n\n\ndef exec_test(result, ans):\n    try:\n        pd.testing.assert_frame_equal(result, ans, check_dtype=False)\n        return 1\n    except:\n        return 0\n\n\nexec_context = r\"\"\"\nimport pandas as pd\nimport numpy as np\ndf = test_input\n[insert]\n\"\"\"\n\n\ndef test_execution(solution: str):\n    code = exec_context.replace(\"[insert]\", solution)\n    for i in range(2):\n        test_input, expected_result = generate_test_case(i + 1)\n        test_env = {\"test_input\": test_input}\n        exec(code, test_env)\n        assert exec_test(test_env[\"result\"], expected_result)\n",
+    "reference_code": "def g(df):\n    return df.groupby('cokey').apply(pd.DataFrame.sort_values, 'A')\n\nresult = g(df.copy())\n",
+    "is_solved": false,
+    "final_solution": "sorted_groups = df.groupby('cokey', group_keys=True).apply(lambda x: x.sort_values('A'))\nsorted_groups = sorted_groups.reset_index(drop=False)\nsorted_groups = sorted_groups.set_index(['cokey', 'index'])\nresult = sorted_groups[['cokey', 'A', 'B']]",
+    "attempts": [
+      {
+        "attempt_index": 0,
+        "implementation": "result = df.groupby('cokey', group_keys=True).apply(lambda x: x.sort_values('A')).set_index(['cokey'], append=True).swaplevel(0,1).sort_index()",
+        "feedback": "Tests passed:\n\nTests failed:\nAssertionError\n  File \"/Users/liudada/Desktop/programming/executors/ds1000_executor.py\", line 48, in _run_test\n    function_with_timeout(test_execution, (solution,), timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 40, in function_with_timeout\n    thread.join(timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 27, in join\n    raise self.exc\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 20, in run\n    self.ret = self._target(*self._args, **self._kwargs)\nAssertionError\n\n\nDS1000 diagnostic outputs:\nTestCase 1 failed (public example).\nactual_result: type=DataFrame\nshape=(5, 2)\ncolumns=['A', 'B']\ndtypes=A    int64\nB    int64\ndtype: object\nvalue=                      A    B\n  cokey    cokey            \n0 11168155 11168155  18   56\n1 11168155 11168155   0   18\n2 11168155 11168155  56   96\n3 11168156 11168156  96  152\n4 11168156 11168156   0   96\nexpected_result: type=DataFrame\nshape=(5, 3)\ncolumns=['cokey', 'A', 'B']\ndtypes=cokey    int64\nA        int64\nB        int64\ndtype: object\nvalue=               cokey   A    B\ncokey                        \n11168155 1  11168155   0   18\n         0  11168155  18   56\n         2  11168155  56   96\n11168156 4  11168156   0   96\n         3  11168156  96  152\n",
+        "is_passing": false,
+        "reflection_after_failure": {
+          "library": "pandas",
+          "task_family": "Aggregation",
+          "api_concepts": "groupby, apply, sort_values, set_index, swaplevel, sort_index, reset_index",
+          "task_intent": "Sort each group by column 'A' and return a DataFrame with a MultiIndex as shown in the desired output.",
+          "prompt_evidence": "How do I apply sort to a pandas groupby operation? ... desired: ... MultiIndex with 'cokey' as the outer index and the original row index as the inner index, with columns ['cokey', 'A', 'B']",
+          "observed_failure": "actual_result is missing the 'cokey' column and has an incorrect MultiIndex structure; expected_result has a MultiIndex with 'cokey' as the outer index and includes the 'cokey' column in the data.",
+          "bug_pattern": "After groupby and sorting, the code sets the index incorrectly, resulting in a DataFrame missing the 'cokey' column and with an incorrect MultiIndex structure.",
+          "failed_assumption": "Assumed that setting the index to ['cokey'] and swapping levels would produce the desired MultiIndex and columns, but this dropped the 'cokey' column from the data and misaligned the index.",
+          "applicability_conditions": "Whenever a groupby-apply-sort operation is needed and the desired output is a MultiIndex DataFrame with the grouping key as the outer index and the original row index as the inner index, while preserving all original columns including the grouping key.",
+          "non_applicability_conditions": "If the output does not require a MultiIndex or if the grouping key should not be preserved as a column in the result.",
+          "repair_pattern": "After groupby-apply-sort, reset the index to flatten the result, then set the MultiIndex with the grouping key as the outer index and the original row index as the inner index, ensuring all original columns are preserved.",
+          "repair_steps": "1. After groupby('cokey').apply(lambda x: x.sort_values('A')), call reset_index(drop=False) to restore all columns and indices. 2. Set the index to ['cokey', 'index'] (where 'index' is the original row index restored by reset_index). 3. Reorder the index levels if necessary to match the desired MultiIndex structure. 4. Ensure the columns include 'cokey', 'A', and 'B' in the correct order.",
+          "preserve_constraints": "Do not drop any columns; output must have columns ['cokey', 'A', 'B'] and a MultiIndex with 'cokey' as the outer index and the original row index as the inner index.",
+          "validation_check": "Verify that the output DataFrame has a MultiIndex with 'cokey' as the outer level, the original row index as the inner level, and columns ['cokey', 'A', 'B'], matching the expected structure and values.",
+          "memory_eligible": "yes",
+          "confidence": "high"
+        }
+      },
+      {
+        "attempt_index": 1,
+        "implementation": "sorted_groups = df.groupby('cokey', group_keys=True).apply(lambda x: x.sort_values('A'))\nsorted_groups = sorted_groups.reset_index(drop=False)\nsorted_groups = sorted_groups.set_index(['cokey', 'index'])\nresult = sorted_groups[['cokey', 'A', 'B']]",
+        "feedback": "Tests passed:\n\nTests failed:\nValueError: cannot insert cokey, already exists\nTraceback (most recent call last):\n  File \"/Users/liudada/Desktop/programming/executors/ds1000_executor.py\", line 48, in _run_test\n    function_with_timeout(test_execution, (solution,), timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 40, in function_with_timeout\n    thread.join(timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 27, in join\n    raise self.exc\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 20, in run\n    self.ret = self._target(*self._args, **self._kwargs)\nValueError: cannot insert cokey, already exists\n",
+        "is_passing": false,
+        "reflection_after_failure": {
+          "library": "pandas",
+          "task_family": "Aggregation",
+          "api_concepts": "groupby, apply, sort_values, reset_index, set_index",
+          "task_intent": "Sort each group in the DataFrame by column 'A' and return the result with a MultiIndex.",
+          "prompt_evidence": "How do I apply sort to a pandas groupby operation?...desired: ... MultiIndex ...",
+          "observed_failure": "ValueError: cannot insert cokey, already exists",
+          "bug_pattern": "reset_index(drop=False) after groupby.apply creates duplicate columns if the grouping column is already present in the DataFrame, leading to a ValueError when setting the index.",
+          "failed_assumption": "Assumed that resetting the index with drop=False would not duplicate the grouping column, even though it is already present.",
+          "applicability_conditions": "When using groupby.apply followed by reset_index and set_index, and the grouping column is already present in the DataFrame.",
+          "non_applicability_conditions": "When the grouping column is not present in the DataFrame or when reset_index is not used after groupby.apply.",
+          "repair_pattern": "After groupby.apply, reset the index with drop=True to avoid duplicating the grouping column, then set the MultiIndex as needed.",
+          "repair_steps": "1. After groupby.apply, use reset_index(drop=True) to avoid duplicating columns. 2. Use set_index with the correct columns to create the desired MultiIndex. 3. Ensure the output columns match the prompt's requirements.",
+          "preserve_constraints": "The output must have a MultiIndex with group and original row order, and columns ['cokey', 'A', 'B'] in the correct order.",
+          "validation_check": "Verify that the output DataFrame has no duplicate columns, the correct MultiIndex, and matches the desired sorted order for each group.",
+          "memory_eligible": "yes",
+          "confidence": "high"
+        }
+      }
+    ]
+  },
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "episodic_archive",
+    "created_at": "2026-06-20T08:20:51.964173+00:00",
+    "episode_id": "340ef6562a07852da17c0f31",
+    "dataset": "ds1000",
+    "item_index": 5,
+    "problem_id": 69,
+    "library_problem_id": 69,
+    "library": "Pandas",
+    "perturbation_type": "Semantic",
+    "perturbation_origin_id": 68,
+    "prompt": "Problem:\nI'm wondering if there is a simpler, memory efficient way to select a subset of rows and columns from a pandas DataFrame.\n\n\nFor instance, given this dataframe:\n\n\n\n\ndf = DataFrame(np.random.rand(4,5), columns = list('abcde'))\nprint df\n          a         b         c         d         e\n0  0.945686  0.000710  0.909158  0.892892  0.326670\n1  0.919359  0.667057  0.462478  0.008204  0.473096\n2  0.976163  0.621712  0.208423  0.980471  0.048334\n3  0.459039  0.788318  0.309892  0.100539  0.753992\nI want only those rows in which the value for column 'c' is greater than 0.45, but I only need columns 'a', 'b' and 'e' for those rows.\n\n\nThis is the method that I've come up with - perhaps there is a better \"pandas\" way?\n\n\n\n\nlocs = [df.columns.get_loc(_) for _ in ['a', 'b', 'e']]\nprint df[df.c > 0.45][locs]\n          a         b         e\n0  0.945686  0.000710  0.326670\n1  0.919359  0.667057  0.473096\nMy final goal is to convert the result to a numpy array to pass into an sklearn regression algorithm, so I will use the code above like this:\n\n\n\n\ntraining_set = array(df[df.c > 0.45][locs])\n... and that peeves me since I end up with a huge array copy in memory. Perhaps there's a better way for that too?\n\nA:\n<code>\nimport pandas as pd\nimport numpy as np\n\ndf = pd.DataFrame(np.random.rand(4,5), columns = list('abcde'))\ncolumns = ['a','b','e']\n</code>\nresult = ... # put solution in this variable\nBEGIN SOLUTION\n<code>\n",
+    "code_context": "import pandas as pd\nimport numpy as np\nimport copy\n\n\ndef generate_test_case(test_case_id):\n    def generate_ans(data):\n        data = data\n        df, columns = data\n        return df.loc[df[\"c\"] > 0.45, columns]\n\n    def define_test_input(test_case_id):\n        if test_case_id == 1:\n            np.random.seed(2)\n            df = pd.DataFrame(np.random.rand(4, 5), columns=list(\"abcde\"))\n            columns = [\"a\", \"b\", \"e\"]\n        if test_case_id == 2:\n            np.random.seed(42)\n            df = pd.DataFrame(np.random.rand(4, 5), columns=list(\"abcde\"))\n            columns = [\"a\", \"b\", \"e\"]\n        return df, columns\n\n    test_input = define_test_input(test_case_id)\n    expected_result = generate_ans(copy.deepcopy(test_input))\n    return test_input, expected_result\n\n\ndef exec_test(result, ans):\n    try:\n        pd.testing.assert_frame_equal(result, ans, check_dtype=False)\n        return 1\n    except:\n        return 0\n\n\nexec_context = r\"\"\"\nimport pandas as pd\nimport numpy as np\ndf, columns = test_input\n[insert]\n\"\"\"\n\n\ndef test_execution(solution: str):\n    code = exec_context.replace(\"[insert]\", solution)\n    for i in range(2):\n        test_input, expected_result = generate_test_case(i + 1)\n        test_env = {\"test_input\": test_input}\n        exec(code, test_env)\n        assert exec_test(test_env[\"result\"], expected_result)\n",
+    "reference_code": "result = df.loc[df['c']>0.45,columns]\n",
+    "is_solved": true,
+    "final_solution": "result = df.loc[df['c'] > 0.45, columns]",
+    "attempts": [
+      {
+        "attempt_index": 0,
+        "implementation": "result = df.loc[df['c'] > 0.45, columns].to_numpy()",
+        "feedback": "Tests passed:\n\nTests failed:\nAssertionError\n  File \"/Users/liudada/Desktop/programming/executors/ds1000_executor.py\", line 48, in _run_test\n    function_with_timeout(test_execution, (solution,), timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 40, in function_with_timeout\n    thread.join(timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 27, in join\n    raise self.exc\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 20, in run\n    self.ret = self._target(*self._args, **self._kwargs)\nAssertionError\n\n\nDS1000 diagnostic outputs:\nTestCase 1 failed (public example).\nactual_result: type=ndarray\nshape=(3, 3)\nvalue=array([[0.4359949 , 0.02592623, 0.4203678 ],\n       [0.33033482, 0.20464863, 0.26682728],\n       [0.78533515, 0.85397529, 0.07964548]])\nexpected_result: type=DataFrame\nshape=(3, 3)\ncolumns=['a', 'b', 'e']\ndtypes=a    float64\nb    float64\ne    float64\ndtype: object\nvalue=          a         b         e\n0  0.435995  0.025926  0.420368\n1  0.330335  0.204649  0.266827\n3  0.785335  0.853975  0.079645\n",
+        "is_passing": false,
+        "reflection_after_failure": {
+          "library": "pandas",
+          "task_family": "Filtering",
+          "api_concepts": "DataFrame.loc, boolean mask, column selection",
+          "task_intent": "Select rows where column 'c' > 0.45 and only columns 'a', 'b', and 'e', returning a DataFrame.",
+          "prompt_evidence": "I want only those rows in which the value for column 'c' is greater than 0.45, but I only need columns 'a', 'b' and 'e' for those rows.",
+          "observed_failure": "actual_result: type=ndarray, expected_result: type=DataFrame",
+          "bug_pattern": "Converting the filtered DataFrame to a numpy array when the expected output is a DataFrame.",
+          "failed_assumption": "Assumed the result should be a numpy array for downstream use, but the test expects a DataFrame.",
+          "applicability_conditions": "When the prompt or test expects a pandas DataFrame as output after filtering and column selection.",
+          "non_applicability_conditions": "When the prompt or test explicitly requests a numpy array or other non-DataFrame output.",
+          "repair_pattern": "Return the filtered and column-selected DataFrame directly, without converting to numpy array.",
+          "repair_steps": "Remove the .to_numpy() call; assign result = df.loc[df['c'] > 0.45, columns].",
+          "preserve_constraints": "Keep the filtered rows (c > 0.45), select only columns ['a', 'b', 'e'], preserve DataFrame type, shape, index, and column names.",
+          "validation_check": "Verify that result is a DataFrame with columns ['a', 'b', 'e'], correct shape, and only rows where c > 0.45.",
+          "memory_eligible": "yes",
+          "confidence": "high"
+        }
+      },
+      {
+        "attempt_index": 1,
+        "implementation": "result = df.loc[df['c'] > 0.45, columns]",
+        "feedback": "Tests passed:\nDS1000 code_context test\n\nTests failed:",
+        "is_passing": true,
+        "reflection_after_failure": null
+      }
+    ]
+  },
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "episodic_archive",
+    "created_at": "2026-06-20T08:21:05.141075+00:00",
+    "episode_id": "787b0255cb0c073b80f1bb6f",
+    "dataset": "ds1000",
+    "item_index": 6,
+    "problem_id": 67,
+    "library_problem_id": 67,
+    "library": "Pandas",
+    "perturbation_type": "Difficult-Rewrite",
+    "perturbation_origin_id": 65,
+    "prompt": "Problem:\nI have a table like this.\nuser    01/12/15    02/12/15 someBool\nu1      100         None      True\nu2      200        -100      False\nu3     None          200      True\n\n\nI want to repartition the date columns into two columns date and value like this.\nuser    date       value   someBool\nu1      01/12/15   100     True\nu2      01/12/15   200     False\nu2      02/12/15  -100     False\nu3      02/12/15   200     True\n\n\nHow to do this in python ?\nIs pivot_table in pandas helpful? \nIf possible provide code/psuedo code & give details on python version. \n\n\nA:\n<code>\nimport pandas as pd\n\n\ndf = pd.DataFrame({'user': ['u1', 'u2', 'u3'],\n                   '01/12/15': [100, 200, None],\n                   '02/12/15': [None, -100, 200],\n                   'someBool': [True, False, True]})\n</code>\ndf = ... # put solution in this variable\nBEGIN SOLUTION\n<code>\n",
+    "code_context": "import pandas as pd\nimport numpy as np\nimport copy\n\n\ndef generate_test_case(test_case_id):\n    def generate_ans(data):\n        df = data\n        df = (\n            df.set_index([\"user\", \"someBool\"])\n            .stack()\n            .reset_index(name=\"value\")\n            .rename(columns={\"level_2\": \"date\"})\n        )\n        return df[[\"user\", \"date\", \"value\", \"someBool\"]]\n\n    def define_test_input(test_case_id):\n        if test_case_id == 1:\n            df = pd.DataFrame(\n                {\n                    \"user\": [\"u1\", \"u2\", \"u3\"],\n                    \"01/12/15\": [100, 200, None],\n                    \"02/12/15\": [None, -100, 200],\n                    \"someBool\": [True, False, True],\n                }\n            )\n        if test_case_id == 2:\n            df = pd.DataFrame(\n                {\n                    \"user\": [\"u1\", \"u2\", \"u3\"],\n                    \"01/10/22\": [100, 200, None],\n                    \"02/10/22\": [None, -100, 200],\n                    \"someBool\": [True, False, True],\n                }\n            )\n        return df\n\n    test_input = define_test_input(test_case_id)\n    expected_result = generate_ans(copy.deepcopy(test_input))\n    return test_input, expected_result\n\n\ndef exec_test(result, ans):\n    try:\n        pd.testing.assert_frame_equal(result, ans, check_dtype=False)\n        return 1\n    except:\n        return 0\n\n\nexec_context = r\"\"\"\nimport pandas as pd\nimport numpy as np\ndf = test_input\n[insert]\nresult = df\n\"\"\"\n\n\ndef test_execution(solution: str):\n    code = exec_context.replace(\"[insert]\", solution)\n    for i in range(2):\n        test_input, expected_result = generate_test_case(i + 1)\n        test_env = {\"test_input\": test_input}\n        exec(code, test_env)\n        assert exec_test(test_env[\"result\"], expected_result)\n",
+    "reference_code": "def g(df):\n    df = df.set_index(['user','someBool']).stack().reset_index(name='value').rename(columns={'level_2':'date'})\n    return df[['user', 'date', 'value', 'someBool']]\ndf = g(df.copy())\n",
+    "is_solved": false,
+    "final_solution": "df = df.melt(id_vars=['user', 'someBool'], var_name='date', value_name='value')\ndf = df.dropna(subset=['value']).reset_index(drop=True)\nresult = df[['user', 'date', 'value', 'someBool']]",
+    "attempts": [
+      {
+        "attempt_index": 0,
+        "implementation": "df = df.melt(id_vars=['user', 'someBool'], var_name='date', value_name='value')\ndf = df.dropna(subset=['value']).reset_index(drop=True)\nresult = df",
+        "feedback": "Tests passed:\n\nTests failed:\nAssertionError\n  File \"/Users/liudada/Desktop/programming/executors/ds1000_executor.py\", line 48, in _run_test\n    function_with_timeout(test_execution, (solution,), timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 40, in function_with_timeout\n    thread.join(timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 27, in join\n    raise self.exc\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 20, in run\n    self.ret = self._target(*self._args, **self._kwargs)\nAssertionError\n\n\nDS1000 diagnostic outputs:\nTestCase 1 failed (public example).\nactual_result: type=DataFrame\nshape=(4, 4)\ncolumns=['user', 'someBool', 'date', 'value']\ndtypes=user         object\nsomeBool       bool\ndate         object\nvalue       float64\ndtype: object\nvalue=  user  someBool      date  value\n0   u1      True  01/12/15  100.0\n1   u2     False  01/12/15  200.0\n2   u2     False  02/12/15 -100.0\n3   u3      True  02/12/15  200.0\nexpected_result: type=DataFrame\nshape=(4, 4)\ncolumns=['user', 'date', 'value', 'someBool']\ndtypes=user         object\ndate         object\nvalue       float64\nsomeBool       bool\ndtype: object\nvalue=  user      date  value  someBool\n0   u1  01/12/15  100.0      True\n1   u2  01/12/15  200.0     False\n2   u2  02/12/15 -100.0     False\n3   u3  02/12/15  200.0      True\n",
+        "is_passing": false,
+        "reflection_after_failure": {
+          "library": "pandas",
+          "task_family": "Reshaping",
+          "api_concepts": "melt, dropna, reset_index",
+          "task_intent": "Reshape the DataFrame so that date columns are melted into a single 'date' column with corresponding 'value', preserving 'user' and 'someBool'.",
+          "prompt_evidence": "\"I want to repartition the date columns into two columns date and value like this. user    date       value   someBool\"",
+          "observed_failure": "actual_result columns are ['user', 'someBool', 'date', 'value'] but expected_result columns are ['user', 'date', 'value', 'someBool']",
+          "bug_pattern": "The code produces the correct data but the column order does not match the required output.",
+          "failed_assumption": "Assumed that the order of columns after melt and dropna does not matter.",
+          "applicability_conditions": "Whenever the prompt or test expects a specific column order in the output DataFrame, especially after reshaping operations.",
+          "non_applicability_conditions": "When the prompt or tests do not specify or require a particular column order.",
+          "repair_pattern": "Reorder the columns of the resulting DataFrame to match the required order as specified in the prompt or expected output.",
+          "repair_steps": "After all transformations, assign result = result[['user', 'date', 'value', 'someBool']] to ensure the columns are in the correct order.",
+          "preserve_constraints": "Do not change the data, row order, or column names; only adjust the column order to match the expected output.",
+          "validation_check": "Verify that the output DataFrame columns are exactly ['user', 'date', 'value', 'someBool'] and the data matches the expected result.",
+          "memory_eligible": "yes",
+          "confidence": "high"
+        }
+      },
+      {
+        "attempt_index": 1,
+        "implementation": "df = df.melt(id_vars=['user', 'someBool'], var_name='date', value_name='value')\ndf = df.dropna(subset=['value']).reset_index(drop=True)\nresult = df[['user', 'date', 'value', 'someBool']]",
+        "feedback": "Tests passed:\n\nTests failed:\nAssertionError\n  File \"/Users/liudada/Desktop/programming/executors/ds1000_executor.py\", line 48, in _run_test\n    function_with_timeout(test_execution, (solution,), timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 40, in function_with_timeout\n    thread.join(timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 27, in join\n    raise self.exc\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 20, in run\n    self.ret = self._target(*self._args, **self._kwargs)\nAssertionError\n\n\nDS1000 diagnostic outputs:\nTestCase 1 failed (public example).\nactual_result: type=DataFrame\nshape=(4, 4)\ncolumns=['user', 'someBool', 'date', 'value']\ndtypes=user         object\nsomeBool       bool\ndate         object\nvalue       float64\ndtype: object\nvalue=  user  someBool      date  value\n0   u1      True  01/12/15  100.0\n1   u2     False  01/12/15  200.0\n2   u2     False  02/12/15 -100.0\n3   u3      True  02/12/15  200.0\nexpected_result: type=DataFrame\nshape=(4, 4)\ncolumns=['user', 'date', 'value', 'someBool']\ndtypes=user         object\ndate         object\nvalue       float64\nsomeBool       bool\ndtype: object\nvalue=  user      date  value  someBool\n0   u1  01/12/15  100.0      True\n1   u2  01/12/15  200.0     False\n2   u2  02/12/15 -100.0     False\n3   u3  02/12/15  200.0      True\n",
+        "is_passing": false,
+        "reflection_after_failure": {
+          "library": "pandas",
+          "task_family": "Reshaping",
+          "api_concepts": "melt, dropna, reset_index, column order",
+          "task_intent": "Reshape the DataFrame so that date columns are melted into 'date' and 'value' columns, preserving 'user' and 'someBool'.",
+          "prompt_evidence": "\"I want to repartition the date columns into two columns date and value like this. user    date       value   someBool\"",
+          "observed_failure": "The output DataFrame columns are in the order ['user', 'someBool', 'date', 'value'] instead of ['user', 'date', 'value', 'someBool'].",
+          "bug_pattern": "The code produces the correct data but does not match the required column order in the output DataFrame.",
+          "failed_assumption": "Assumed that the column order after melt and selection does not matter for correctness.",
+          "applicability_conditions": "Whenever the prompt or test expects a specific column order in the output DataFrame after reshaping or melting.",
+          "non_applicability_conditions": "When the prompt or tests do not specify or require a particular column order.",
+          "repair_pattern": "Reorder the columns of the output DataFrame to match the required order as specified in the prompt or expected output.",
+          "repair_steps": "After all transformations, explicitly select columns in the required order: ['user', 'date', 'value', 'someBool'].",
+          "preserve_constraints": "Do not change the data, row order, or types; only adjust the column order to match the specification.",
+          "validation_check": "Verify that the output DataFrame columns are exactly ['user', 'date', 'value', 'someBool'] and the data matches the expected result.",
+          "memory_eligible": "yes",
+          "confidence": "high"
+        }
+      }
+    ]
+  },
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "episodic_archive",
+    "created_at": "2026-06-20T08:21:17.466338+00:00",
+    "episode_id": "f4a3767d53d65123bd2c0db2",
+    "dataset": "ds1000",
+    "item_index": 9,
+    "problem_id": 41,
+    "library_problem_id": 41,
+    "library": "Pandas",
+    "perturbation_type": "Difficult-Rewrite",
+    "perturbation_origin_id": 39,
+    "prompt": "Problem:\nI have a dataframe with numerous columns (≈30) from an external source (csv file) but several of them have no value or always the same. Thus, I would to see quickly the value_counts for each column. How can i do that?\nFor example\n  id, temp, name\n1 34, null, mark\n2 22, null, mark\n3 34, null, mark\n\nPlease return a String like this:\n\n---- id ---\n34    2\n22    1\nName: id, dtype: int64\n---- temp ---\nnull    3\nName: temp, dtype: int64\n---- name ---\nmark    3\nName: name, dtype: int64\n\nSo I would know that temp is irrelevant and name is not interesting (always the same)\n\nA:\n<code>\nimport pandas as pd\n\ndf = pd.DataFrame(data=[[34, 'null', 'mark'], [22, 'null', 'mark'], [34, 'null', 'mark']], columns=['id', 'temp', 'name'], index=[1, 2, 3])\n</code>\nresult = ... # put solution in this variable\nBEGIN SOLUTION\n<code>\n",
+    "code_context": "import pandas as pd\nimport numpy as np\nimport copy\n\n\ndef generate_test_case(test_case_id):\n    def generate_ans(data):\n        df = data\n        s = \"\"\n        for c in df.columns:\n            s += \"---- %s ---\" % c\n            s += \"\\n\"\n            s += str(df[c].value_counts())\n            s += \"\\n\"\n        return s\n\n    def define_test_input(test_case_id):\n        if test_case_id == 1:\n            df = pd.DataFrame(\n                data=[[34, \"null\", \"mark\"], [22, \"null\", \"mark\"], [34, \"null\", \"mark\"]],\n                columns=[\"id\", \"temp\", \"name\"],\n                index=[1, 2, 3],\n            )\n        elif test_case_id == 2:\n            df = pd.DataFrame(\n                data=[[11, \"null\", \"mark\"], [14, \"null\", \"mark\"], [51, \"null\", \"mark\"]],\n                columns=[\"id\", \"temp\", \"name\"],\n                index=[1, 2, 3],\n            )\n        return df\n\n    test_input = define_test_input(test_case_id)\n    expected_result = generate_ans(copy.deepcopy(test_input))\n    return test_input, expected_result\n\n\ndef exec_test(result, ans):\n    try:\n        assert result == ans\n        return 1\n    except:\n        return 0\n\n\nexec_context = r\"\"\"\nimport pandas as pd\nimport numpy as np\ndf = test_input\n[insert]\n\"\"\"\n\n\ndef test_execution(solution: str):\n    code = exec_context.replace(\"[insert]\", solution)\n    for i in range(2):\n        test_input, expected_result = generate_test_case(i + 1)\n        test_env = {\"test_input\": test_input}\n        exec(code, test_env)\n        assert exec_test(test_env[\"result\"], expected_result)\n",
+    "reference_code": "def g(df):\n    s = ''\n    for c in df.columns:\n        s += \"---- %s ---\" % c\n        s += \"\\n\"\n        s += str(df[c].value_counts())\n        s += \"\\n\"\n    return s\n\nresult = g(df.copy())\n",
+    "is_solved": true,
+    "final_solution": "result = '\\n'.join(\n    f\"---- {col} ---\\n{df[col].value_counts()}\" for col in df.columns\n) + '\\n'",
+    "attempts": [
+      {
+        "attempt_index": 0,
+        "implementation": "result = '\\n'.join(\n    f\"---- {col} ---\\n{df[col].value_counts()}\" for col in df.columns\n)",
+        "feedback": "Tests passed:\n\nTests failed:\nAssertionError\n  File \"/Users/liudada/Desktop/programming/executors/ds1000_executor.py\", line 48, in _run_test\n    function_with_timeout(test_execution, (solution,), timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 40, in function_with_timeout\n    thread.join(timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 27, in join\n    raise self.exc\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 20, in run\n    self.ret = self._target(*self._args, **self._kwargs)\nAssertionError\n\n\nDS1000 diagnostic outputs:\nTestCase 1 failed (public example).\nactual_result: type=str\nvalue='---- id ---\\nid\\n34    2\\n22    1\\nName: count, dtype: int64\\n---- temp ---\\ntemp\\nnull    3\\nName: count, dtype: int64\\n---- name ---\\nname\\nmark    3\\nName: count, dtype: int64'\nexpected_result: type=str\nvalue='---- id ---\\nid\\n34    2\\n22    1\\nName: count, dtype: int64\\n---- temp ---\\ntemp\\nnull    3\\nName: count, dtype: int64\\n---- name ---\\nname\\nmark    3\\nName: count, dtype: int64\\n'\n",
+        "is_passing": false,
+        "reflection_after_failure": {
+          "library": "pandas",
+          "task_family": "Other",
+          "api_concepts": "value_counts, string join, DataFrame iteration",
+          "task_intent": "Display the value counts for each column in a dataframe, formatted as a string with column headers.",
+          "prompt_evidence": "Please return a String like this: ...",
+          "observed_failure": "actual_result is missing a trailing newline compared to expected_result",
+          "bug_pattern": "Omitting required trailing newline in formatted string output, causing string mismatch.",
+          "failed_assumption": "Assumed that joining the formatted column outputs without a final newline would match the required output format.",
+          "applicability_conditions": "When the prompt requires a formatted string output with a specific structure, including a trailing newline after the last section.",
+          "non_applicability_conditions": "When the output format does not require a trailing newline or is not string-based.",
+          "repair_pattern": "Ensure the final formatted string includes a trailing newline to match the required output structure.",
+          "repair_steps": "After joining the per-column formatted strings, append a newline character ('\\n') to the result.",
+          "preserve_constraints": "Do not alter the per-column formatting, column order, or the use of value_counts; output type must remain string.",
+          "validation_check": "Verify that the output string ends with a newline and matches the prompt's example structure, resolving the mismatch.",
+          "memory_eligible": "yes",
+          "confidence": "high"
+        }
+      },
+      {
+        "attempt_index": 1,
+        "implementation": "result = '\\n'.join(\n    f\"---- {col} ---\\n{df[col].value_counts()}\" for col in df.columns\n) + '\\n'",
+        "feedback": "Tests passed:\nDS1000 code_context test\n\nTests failed:",
+        "is_passing": true,
+        "reflection_after_failure": null
+      }
+    ]
+  }
+]

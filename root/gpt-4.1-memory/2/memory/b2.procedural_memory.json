@@ -1,0 +1,98 @@
+[
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "procedural",
+    "created_at": "2026-06-17T08:36:03.620720+00:00",
+    "skill_id": "a3f40aecbfbe69f31d967034",
+    "support_count": 1,
+    "dataset": "ds1000",
+    "item_index": 0,
+    "problem_id": 69,
+    "library_problem_id": 69,
+    "library": "Pandas",
+    "skill": {
+      "library": "pandas",
+      "task_family": "Filtering",
+      "retrieval_key": "conditional row and column selection preserving DataFrame",
+      "api_concepts": "DataFrame.loc, boolean indexing, column subset selection",
+      "procedure": "1. Define the condition for selecting rows based on column values. 2. Specify the list of columns to retain. 3. Use a selection method to filter rows according to the condition and select only the specified columns. 4. Return the resulting DataFrame without altering its structure or converting its type.",
+      "avoid_assumption": "Assuming that the output should be converted to a different type (e.g., numpy array) when the task requires preserving DataFrame structure and metadata.",
+      "applicability_conditions": "When you need to extract a subset of rows based on a condition and a subset of columns from a DataFrame, and the output must remain a DataFrame.",
+      "non_applicability_conditions": "When the output is explicitly required to be a different type (e.g., numpy array), or when column names and DataFrame structure are not needed.",
+      "preserve_constraints": "Preserve DataFrame type, column names, row and column ordering, and index alignment; do not alter unaffected data.",
+      "verification": "The output is a DataFrame containing only the selected rows and columns, with correct structure, column names, and preserved data integrity.",
+      "confidence": "high"
+    },
+    "evidence": {
+      "reflection": {
+        "library": "pandas",
+        "task_family": "pandas conditional row selection and column subset",
+        "api_concepts": "DataFrame.loc, boolean indexing, column selection",
+        "task_intent": "Select rows where column 'c' > 0.45 and only columns 'a', 'b', and 'e', returning a DataFrame.",
+        "prompt_evidence": "I want only those rows in which the value for column 'c' is greater than 0.45, but I only need columns 'a', 'b' and 'e' for those rows.",
+        "observed_failure": "actual_result is a numpy ndarray, but expected_result is a DataFrame with columns ['a', 'b', 'e']",
+        "bug_pattern": "Converting the result to a numpy array when the prompt requires a DataFrame output, losing column names and DataFrame structure.",
+        "failed_assumption": "Assumed the output should be a numpy array, but the prompt and tests require a DataFrame.",
+        "applicability_conditions": "When the task requires selecting rows and columns from a DataFrame based on a condition, and the output must remain a DataFrame.",
+        "non_applicability_conditions": "When the output is explicitly required to be a numpy array or another type, or when column names and DataFrame structure are not needed.",
+        "repair_pattern": "Return the filtered DataFrame directly without converting to numpy array, preserving column names and DataFrame structure.",
+        "repair_steps": "Use df.loc[condition, columns] to select the desired rows and columns, and assign the result directly to the output variable without calling .to_numpy().",
+        "preserve_constraints": "Output type must be DataFrame, shape and column names must match the selected columns, and the result must be assigned to the specified variable.",
+        "validation_check": "Verify that the output is a DataFrame with the correct shape, column names, and values matching the filtered and selected subset.",
+        "memory_eligible": "yes",
+        "confidence": "high"
+      },
+      "success_patch": "result = df.loc[df['c'] > 0.45, columns]",
+      "patch_diff": "--- failed_code+++ successful_code@@ -1 +1 @@-result = df.loc[df['c'] > 0.45, columns].to_numpy()+result = df.loc[df['c'] > 0.45, columns]",
+      "success_verification": "Tests passed:\nDS1000 code_context test\n\nTests failed:"
+    }
+  },
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "procedural",
+    "created_at": "2026-06-17T08:36:17.437578+00:00",
+    "skill_id": "5d62a590bc866b4852d499e5",
+    "support_count": 1,
+    "dataset": "ds1000",
+    "item_index": 1,
+    "problem_id": 67,
+    "library_problem_id": 67,
+    "library": "Pandas",
+    "skill": {
+      "library": "pandas",
+      "task_family": "Reshaping",
+      "retrieval_key": "reorder columns after reshaping to match specification",
+      "api_concepts": "melt, column selection, assignment",
+      "procedure": "1. Perform the desired reshaping or transformation operation (e.g., melt, pivot, stack, etc.). 2. Identify the required column order as specified by the prompt, documentation, or downstream requirements. 3. Reorder the columns of the resulting DataFrame to match the required order by explicit selection. 4. Assign the reordered DataFrame to the output variable. 5. Ensure that only column order is changed, not the data or row order.",
+      "avoid_assumption": "Assuming that reshaping operations automatically preserve or match the required column order.",
+      "applicability_conditions": "When the output DataFrame must match a specific column order after reshaping or transformation, as required by prompts, tests, or downstream consumers.",
+      "non_applicability_conditions": "When column order is not specified, not relevant, or the output is not a DataFrame.",
+      "preserve_constraints": "Preserve all data values, row order, and unaffected columns; only adjust column order.",
+      "verification": "The output DataFrame columns exactly match the required order, and all data and row order remain unchanged.",
+      "confidence": "high"
+    },
+    "evidence": {
+      "reflection": {
+        "library": "pandas",
+        "task_family": "pandas melt reshape column order preservation",
+        "api_concepts": "melt, dropna, sort_values, reset_index, column order",
+        "task_intent": "Reshape wide date columns into long format with 'date' and 'value' columns, preserving original column order.",
+        "prompt_evidence": "\"I want to repartition the date columns into two columns date and value like this. user    date       value   someBool\"",
+        "observed_failure": "actual_result columns=['user', 'someBool', 'date', 'value'] vs expected_result columns=['user', 'date', 'value', 'someBool']",
+        "bug_pattern": "The code produces correct data but does not match the required column order in the output DataFrame.",
+        "failed_assumption": "Assumed that the column order after melt and dropna does not matter or will match the example automatically.",
+        "applicability_conditions": "Whenever a pandas DataFrame is reshaped (e.g., with melt) and the prompt or test expects a specific column order in the output.",
+        "non_applicability_conditions": "When the prompt or tests do not specify or require a particular column order, or when the output is not a DataFrame.",
+        "repair_pattern": "Reorder the columns of the resulting DataFrame to match the required order as specified in the prompt or expected output.",
+        "repair_steps": "After all transformations, select and assign the DataFrame columns in the required order, e.g., df = df[['user', 'date', 'value', 'someBool']].",
+        "preserve_constraints": "Do not change the data, row order, or column values; only adjust the column order to match the specification.",
+        "validation_check": "Check that the output DataFrame columns exactly match the required order: ['user', 'date', 'value', 'someBool'], and that the data remains unchanged.",
+        "memory_eligible": "yes",
+        "confidence": "high"
+      },
+      "success_patch": "df = df.melt(id_vars=['user', 'someBool'], var_name='date', value_name='value')\ndf = df.dropna(subset=['value']).sort_values(['user', 'date']).reset_index(drop=True)\ndf = df[['user', 'date', 'value', 'someBool']]\nresult = df",
+      "patch_diff": "--- failed_code+++ successful_code@@ -1 +1,4 @@-df = df.melt(id_vars=['user', 'someBool'], var_name='date', value_name='value').dropna(subset=['value']).sort_values(['user', 'date']).reset_index(drop=True)+df = df.melt(id_vars=['user', 'someBool'], var_name='date', value_name='value')\n+df = df.dropna(subset=['value']).sort_values(['user', 'date']).reset_index(drop=True)\n+df = df[['user', 'date', 'value', 'someBool']]\n+result = df",
+      "success_verification": "Tests passed:\nDS1000 code_context test\n\nTests failed:"
+    }
+  }
+]

@@ -7,3 +7,12 @@ torch
 transformers
 accelerate
 rich
+pandas
+numpy	
+scipy
+matplotlib
+seaborn
+scikit-learn
+pyyaml
+pillow
+tensorflow

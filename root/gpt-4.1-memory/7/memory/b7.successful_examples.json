@@ -1,0 +1,47 @@
+[
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "successful_example",
+    "created_at": "2026-06-22T14:03:35.268461+00:00",
+    "example_id": "5e4573db71e1f1530e9e2e86",
+    "dataset": "ds1000",
+    "item_index": 1,
+    "problem_id": 147,
+    "library_problem_id": 147,
+    "library": "Pandas",
+    "prompt": "Problem:\nI have\n\ndf = pd.DataFrame.from_dict({'id': ['A', 'B', 'A', 'C', 'D', 'B', 'C'], 'val': [1,2,-3,1,5,6,-2], 'stuff':['12','23232','13','1234','3235','3236','732323']})\n\n  id   stuff  val\n0  A      12    1\n1  B   23232    2\n2  A      13   -3\n3  C    1234    1\n4  D    3235    5\n5  B    3236    6\n6  C  732323   -2\nI'd like to get a running sum of val for each id. After that, if the sum is negative,set it to 0, so the desired output looks like this:\n\n  id   stuff  val  cumsum\n0  A      12    1   1\n1  B   23232    2   2\n2  A      13   -3   0\n3  C    1234    1   1\n4  D    3235    5   5\n5  B    3236    6   8\n6  C  732323   -2  0\nThis is what I tried:\n\ndf['cumsum'] = df.groupby('id').cumsum(['val'])\nand\n\ndf['cumsum'] = df.groupby('id').cumsum(['val'])\nThis is the error I get:\n\nValueError: Wrong number of items passed 0, placement implies 1\n\nA:\n<code>\nimport pandas as pd\n\ndf = pd.DataFrame.from_dict({'id': ['A', 'B', 'A', 'C', 'D', 'B', 'C'],\n                             'val': [1,2,-3,1,5,6,-2],\n                             'stuff':['12','23232','13','1234','3235','3236','732323']})\n</code>\ndf = ... # put solution in this variable\nBEGIN SOLUTION\n<code>\n",
+    "successful_solution": "df['cumsum'] = df.groupby('id')['val'].cumsum().clip(lower=0)\nresult = df",
+    "reference_code": "def g(df):\n    df['cumsum'] = df.groupby('id')['val'].transform(pd.Series.cumsum)\n    df['cumsum'] = df['cumsum'].where(df['cumsum'] > 0, 0)\n    return df\n\ndf = g(df.copy())\n",
+    "success_feedback": "Tests passed:\nDS1000 code_context test\n\nTests failed:"
+  },
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "successful_example",
+    "created_at": "2026-06-22T14:03:56.906657+00:00",
+    "example_id": "7b9f0020bc124586b9c2afd1",
+    "dataset": "ds1000",
+    "item_index": 3,
+    "problem_id": 126,
+    "library_problem_id": 126,
+    "library": "Pandas",
+    "prompt": "Problem:\nMy sample df has four columns with NaN values. The goal is to concatenate all the kewwords rows from end to front while excluding the NaN values. \nimport pandas as pd\nimport numpy as np\ndf = pd.DataFrame({'users': ['Hu Tao', 'Zhongli', 'Xingqiu'],\n                   'keywords_0': [\"a\", np.nan, \"c\"],\n                   'keywords_1': [\"d\", \"e\", np.nan],\n                   'keywords_2': [np.nan, np.nan, \"b\"],\n                   'keywords_3': [\"f\", np.nan, \"g\"]})\n\n\n     users keywords_0 keywords_1 keywords_2 keywords_3\n0   Hu Tao          a          d        NaN          f\n1  Zhongli        NaN          e        NaN        NaN\n2  Xingqiu          c        NaN          b          g\n\n\nWant to accomplish the following:\n     users keywords_0 keywords_1 keywords_2 keywords_3 keywords_all\n0   Hu Tao          a          d        NaN          f        f-d-a\n1  Zhongli        NaN          e        NaN        NaN            e\n2  Xingqiu          c        NaN          b          g        g-b-c\n\n\nPseudo code:\ncols = [df.keywords_0, df.keywords_1, df.keywords_2, df.keywords_3]\ndf[\"keywords_all\"] = df[\"keywords_all\"].apply(lambda cols: \"-\".join(cols), axis=1)\n\n\nI know I can use \"-\".join() to get the exact result, but I am unsure how to pass the column names into the function.\n\n\nA:\n<code>\nimport pandas as pd\nimport numpy as np\n\n\ndf = pd.DataFrame({'users': ['Hu Tao', 'Zhongli', 'Xingqiu'],\n                   'keywords_0': [\"a\", np.nan, \"c\"],\n                   'keywords_1': [\"d\", \"e\", np.nan],\n                   'keywords_2': [np.nan, np.nan, \"b\"],\n                   'keywords_3': [\"f\", np.nan, \"g\"]})\n</code>\ndf = ... # put solution in this variable\nBEGIN SOLUTION\n<code>\n",
+    "successful_solution": "cols = ['keywords_0', 'keywords_1', 'keywords_2', 'keywords_3']\ndf['keywords_all'] = df[cols[::-1]].apply(lambda row: '-'.join([str(x) for x in row if pd.notna(x)]), axis=1)\nresult = df",
+    "reference_code": "import numpy as np\ndef g(df):\n    df[\"keywords_all\"] = df.filter(like='keyword').apply(lambda x: '-'.join(x.dropna()), axis=1)\n    for i in range(len(df)):\n        df.loc[i, \"keywords_all\"] = df.loc[i, \"keywords_all\"][::-1]\n    return df\n\ndf = g(df.copy())\n",
+    "success_feedback": "Tests passed:\nDS1000 code_context test\n\nTests failed:"
+  },
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "successful_example",
+    "created_at": "2026-06-22T14:04:04.331747+00:00",
+    "example_id": "a5d98a7be92e975a231dbc32",
+    "dataset": "ds1000",
+    "item_index": 4,
+    "problem_id": 254,
+    "library_problem_id": 254,
+    "library": "Pandas",
+    "prompt": "Problem:\nI have a dataframe with one of its column having a list at each index. I want to concatenate these lists into one list. I am using \nids = df.loc[0:index, 'User IDs'].values.tolist()\n\n\nHowever, this results in \n['[1,2,3,4......]'] which is a string. Somehow each value in my list column is type str. I have tried converting using list(), literal_eval() but it does not work. The list() converts each element within a list into a string e.g. from [12,13,14...] to ['['1'',','2',','1',',','3'......]'].\nHow to concatenate pandas column with list values into one list? Kindly help out, I am banging my head on it for several hours. \n\n\nA:\n<code>\nimport pandas as pd\n\n\ndf = pd.DataFrame(dict(col1=[[1, 2, 3]] * 2))\n</code>\nresult = ... # put solution in this variable\nBEGIN SOLUTION\n<code>\n",
+    "successful_solution": "import ast\nresult = sum([ast.literal_eval(str(x)) if isinstance(x, str) else x for x in df['col1']], [])",
+    "reference_code": "def g(df):\n    return df.col1.sum()\n\nresult = g(df.copy())\n",
+    "success_feedback": "Tests passed:\nDS1000 code_context test\n\nTests failed:"
+  }
+]

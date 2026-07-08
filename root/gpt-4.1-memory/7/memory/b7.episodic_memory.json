@@ -1,0 +1,51 @@
+[
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "episodic",
+    "created_at": "2026-06-22T14:03:34.051918+00:00",
+    "episode_id": "49d66629dbb800d032d4ca8f",
+    "retrieval_text": "library: Pandas\ntask_family: Sorting\ntask_intent: unknown\nfailure_signature: unknown\nrepair_action: After sorting and setting the multi-index, reset the index and then set it again so that 'cokey' remains as a column in the DataFrame, matching the expected output.",
+    "library": "Pandas",
+    "task_family": "Sorting",
+    "task_intent": "unknown",
+    "error_type": "AssertionError",
+    "failure_signature": "unknown",
+    "failed_assumption": "The code assumed that setting 'cokey' as an index is sufficient, but the expected output requires 'cokey' as both an index and a column.",
+    "repair_action": "After sorting and setting the multi-index, reset the index and then set it again so that 'cokey' remains as a column in the DataFrame, matching the expected output.",
+    "failure_snapshot": {
+      "type": "shape_error",
+      "location": "output shape",
+      "observed": "(5, 2)",
+      "expected": "(5, 3)"
+    },
+    "repair_success": false,
+    "archive_ref": "49d66629dbb800d032d4ca8f",
+    "item_index": 0,
+    "problem_id": 160
+  },
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "episodic",
+    "created_at": "2026-06-22T14:03:50.124980+00:00",
+    "episode_id": "359d9a0ca56896dfec2c67cc",
+    "retrieval_text": "library: Pandas\ntask_family: Assignment\ntask_intent: unknown\nfailure_signature: unknown\nrepair_action: Iterate over all sublists in 'products', building a combined mask for all specified ranges, so the code works for any number of ranges.",
+    "library": "Pandas",
+    "task_family": "Assignment",
+    "task_intent": "unknown",
+    "error_type": "IndexError",
+    "failure_signature": "unknown",
+    "failed_assumption": "The code expects 'products' to always contain exactly two sublists for range masking.",
+    "repair_action": "Iterate over all sublists in 'products', building a combined mask for all specified ranges, so the code works for any number of ranges.",
+    "failure_snapshot": {
+      "type": "index_error",
+      "location": "/Users/liudada/Desktop/programming/executors/executor_utils.py:20 in run",
+      "observed": "list index out of range",
+      "expected": "valid positional index"
+    },
+    "repair_success": true,
+    "archive_ref": "359d9a0ca56896dfec2c67cc",
+    "item_index": 2,
+    "problem_id": 18,
+    "fixed_code": "mask = False\nfor rng in products:\n    mask = mask | ((df['product'] >= rng[0]) & (df['product'] <= rng[1]))\ndf.loc[mask, 'score'] = df.loc[mask, 'score'] * 10\nresult = df"
+  }
+]

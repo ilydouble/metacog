@@ -1,0 +1,166 @@
+[
+  {
+    "prompt": "Problem:\nHow do I apply sort to a pandas groupby operation? The command below returns an error saying that 'bool' object is not callable\nimport pandas as pd\ndf.groupby('cokey').sort('A')\ncokey       A   B\n11168155    18  56\n11168155    0   18\n11168155    56  96\n11168156    96  152\n11168156    0   96\n\n\ndesired:\n               cokey   A    B\ncokey                        \n11168155 1  11168155   0   18\n         0  11168155  18   56\n         2  11168155  56   96\n11168156 4  11168156   0   96\n         3  11168156  96  152\n\n\n\n\nA:\n<code>\nimport pandas as pd\n\n\ndf = pd.DataFrame({'cokey':[11168155,11168155,11168155,11168156,11168156],\n                   'A':[18,0,56,96,0],\n                   'B':[56,18,96,152,96]})\n</code>\nresult = ... # put solution in this variable\nBEGIN SOLUTION\n<code>\n",
+    "reference_code": "def g(df):\n    return df.groupby('cokey').apply(pd.DataFrame.sort_values, 'A')\n\nresult = g(df.copy())\n",
+    "metadata": {
+      "problem_id": 160,
+      "library_problem_id": 160,
+      "library": "Pandas",
+      "test_case_cnt": 2,
+      "perturbation_type": "Origin",
+      "perturbation_origin_id": 160
+    },
+    "code_context": "import pandas as pd\nimport numpy as np\nimport copy\n\n\ndef generate_test_case(test_case_id):\n    def generate_ans(data):\n        df = data\n        return df.groupby(\"cokey\").apply(pd.DataFrame.sort_values, \"A\")\n\n    def define_test_input(test_case_id):\n        if test_case_id == 1:\n            df = pd.DataFrame(\n                {\n                    \"cokey\": [11168155, 11168155, 11168155, 11168156, 11168156],\n                    \"A\": [18, 0, 56, 96, 0],\n                    \"B\": [56, 18, 96, 152, 96],\n                }\n            )\n        if test_case_id == 2:\n            df = pd.DataFrame(\n                {\n                    \"cokey\": [155, 155, 155, 156, 156],\n                    \"A\": [18, 0, 56, 96, 0],\n                    \"B\": [56, 18, 96, 152, 96],\n                }\n            )\n        return df\n\n    test_input = define_test_input(test_case_id)\n    expected_result = generate_ans(copy.deepcopy(test_input))\n    return test_input, expected_result\n\n\ndef exec_test(result, ans):\n    try:\n        pd.testing.assert_frame_equal(result, ans, check_dtype=False)\n        return 1\n    except:\n        return 0\n\n\nexec_context = r\"\"\"\nimport pandas as pd\nimport numpy as np\ndf = test_input\n[insert]\n\"\"\"\n\n\ndef test_execution(solution: str):\n    code = exec_context.replace(\"[insert]\", solution)\n    for i in range(2):\n        test_input, expected_result = generate_test_case(i + 1)\n        test_env = {\"test_input\": test_input}\n        exec(code, test_env)\n        assert exec_test(test_env[\"result\"], expected_result)\n",
+    "is_solved": false,
+    "reflections": [
+      "{\"library\": \"pandas\", \"task_family\": \"Sorting\", \"api_concepts\": \"sort_values, groupby, set_index\", \"root_cause\": \"The actual result is missing the 'cokey' column and does not have the expected MultiIndex structure; it only sets 'cokey' as the index and sorts, rather than grouping and sorting within groups while preserving all columns.\", \"failed_assumption\": \"The code assumed that simply sorting by 'cokey' and 'A' and setting 'cokey' as the index would match the expected output, but it did not create the required MultiIndex or retain the 'cokey' column as a data column.\", \"repair_action\": \"After sorting by 'cokey' and 'A', reset the index to restore the default integer index, then set a MultiIndex with ['cokey', original row index], and ensure the 'cokey' column remains in the DataFrame.\", \"preserve_constraints\": \"Output must have columns ['cokey', 'A', 'B'], a MultiIndex with 'cokey' and the original row index, and match the expected row ordering.\", \"confidence\": \"high\"}",
+      "{\"library\": \"pandas\", \"task_family\": \"Sorting\", \"api_concepts\": \"sort_values, set_index\", \"root_cause\": \"The actual result is missing the 'cokey' column, while the expected result includes it; the code sets 'cokey' as an index and drops it from columns.\", \"failed_assumption\": \"The code assumed that setting 'cokey' as an index is sufficient, but the expected output requires 'cokey' as both an index and a column.\", \"repair_action\": \"After sorting and setting the multi-index, reset the index and then set it again so that 'cokey' remains as a column in the DataFrame, matching the expected output.\", \"preserve_constraints\": \"Keep the output shape, ordering, and column types identical to the expected result, including 'cokey' as both an index and a column.\", \"confidence\": \"high\"}"
+    ],
+    "reflection_attempt_indices": [
+      0,
+      1
+    ],
+    "implementations": [
+      "result = df.sort_values(['cokey', 'A']).set_index(['cokey']).sort_index()",
+      "df_sorted = df.sort_values(['cokey', 'A'])\ndf_sorted = df_sorted.reset_index()\ndf_sorted = df_sorted.set_index(['cokey', 'index'])\nresult = df_sorted"
+    ],
+    "test_feedback": [
+      "Tests passed:\n\nTests failed:\nAssertionError\n  File \"/Users/liudada/Desktop/programming/executors/ds1000_executor.py\", line 48, in _run_test\n    function_with_timeout(test_execution, (solution,), timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 40, in function_with_timeout\n    thread.join(timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 27, in join\n    raise self.exc\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 20, in run\n    self.ret = self._target(*self._args, **self._kwargs)\nAssertionError\n\n\nDS1000 diagnostic outputs:\nTestCase 1 failed (public example).\nactual_result: type=DataFrame\nshape=(5, 2)\ncolumns=['A', 'B']\ndtypes=A    int64\nB    int64\ndtype: object\nvalue=           A    B\ncokey            \n11168155   0   18\n11168155  18   56\n11168155  56   96\n11168156   0   96\n11168156  96  152\nexpected_result: type=DataFrame\nshape=(5, 3)\ncolumns=['cokey', 'A', 'B']\ndtypes=cokey    int64\nA        int64\nB        int64\ndtype: object\nvalue=               cokey   A    B\ncokey                        \n11168155 1  11168155   0   18\n         0  11168155  18   56\n         2  11168155  56   96\n11168156 4  11168156   0   96\n         3  11168156  96  152\n",
+      "Tests passed:\n\nTests failed:\nAssertionError\n  File \"/Users/liudada/Desktop/programming/executors/ds1000_executor.py\", line 48, in _run_test\n    function_with_timeout(test_execution, (solution,), timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 40, in function_with_timeout\n    thread.join(timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 27, in join\n    raise self.exc\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 20, in run\n    self.ret = self._target(*self._args, **self._kwargs)\nAssertionError\n\n\nDS1000 diagnostic outputs:\nTestCase 1 failed (public example).\nactual_result: type=DataFrame\nshape=(5, 2)\ncolumns=['A', 'B']\ndtypes=A    int64\nB    int64\ndtype: object\nvalue=                 A    B\ncokey    index         \n11168155 1       0   18\n         0      18   56\n         2      56   96\n11168156 4       0   96\n         3      96  152\nexpected_result: type=DataFrame\nshape=(5, 3)\ncolumns=['cokey', 'A', 'B']\ndtypes=cokey    int64\nA        int64\nB        int64\ndtype: object\nvalue=               cokey   A    B\ncokey                        \n11168155 1  11168155   0   18\n         0  11168155  18   56\n         2  11168155  56   96\n11168156 4  11168156   0   96\n         3  11168156  96  152\n"
+    ],
+    "procedural_skill": null,
+    "solution": "df_sorted = df.sort_values(['cokey', 'A'])\ndf_sorted = df_sorted.reset_index()\ndf_sorted = df_sorted.set_index(['cokey', 'index'])\nresult = df_sorted",
+    "memory_store_paths": {
+      "episodic": "root/gpt-4.1-memory/7/memory/b7.episodic_memory.json",
+      "episodic_archive": "root/gpt-4.1-memory/7/memory/b7.episodic_archive.json",
+      "procedural": null,
+      "successful_examples": null
+    }
+  },
+  {
+    "prompt": "Problem:\nI have\n\ndf = pd.DataFrame.from_dict({'id': ['A', 'B', 'A', 'C', 'D', 'B', 'C'], 'val': [1,2,-3,1,5,6,-2], 'stuff':['12','23232','13','1234','3235','3236','732323']})\n\n  id   stuff  val\n0  A      12    1\n1  B   23232    2\n2  A      13   -3\n3  C    1234    1\n4  D    3235    5\n5  B    3236    6\n6  C  732323   -2\nI'd like to get a running sum of val for each id. After that, if the sum is negative,set it to 0, so the desired output looks like this:\n\n  id   stuff  val  cumsum\n0  A      12    1   1\n1  B   23232    2   2\n2  A      13   -3   0\n3  C    1234    1   1\n4  D    3235    5   5\n5  B    3236    6   8\n6  C  732323   -2  0\nThis is what I tried:\n\ndf['cumsum'] = df.groupby('id').cumsum(['val'])\nand\n\ndf['cumsum'] = df.groupby('id').cumsum(['val'])\nThis is the error I get:\n\nValueError: Wrong number of items passed 0, placement implies 1\n\nA:\n<code>\nimport pandas as pd\n\ndf = pd.DataFrame.from_dict({'id': ['A', 'B', 'A', 'C', 'D', 'B', 'C'],\n                             'val': [1,2,-3,1,5,6,-2],\n                             'stuff':['12','23232','13','1234','3235','3236','732323']})\n</code>\ndf = ... # put solution in this variable\nBEGIN SOLUTION\n<code>\n",
+    "reference_code": "def g(df):\n    df['cumsum'] = df.groupby('id')['val'].transform(pd.Series.cumsum)\n    df['cumsum'] = df['cumsum'].where(df['cumsum'] > 0, 0)\n    return df\n\ndf = g(df.copy())\n",
+    "metadata": {
+      "problem_id": 147,
+      "library_problem_id": 147,
+      "library": "Pandas",
+      "test_case_cnt": 3,
+      "perturbation_type": "Difficult-Rewrite",
+      "perturbation_origin_id": 143
+    },
+    "code_context": "import pandas as pd\nimport numpy as np\nimport copy\n\n\ndef generate_test_case(test_case_id):\n    def generate_ans(data):\n        df = data\n        df[\"cumsum\"] = df.groupby(\"id\")[\"val\"].transform(pd.Series.cumsum)\n        df[\"cumsum\"] = df[\"cumsum\"].where(df[\"cumsum\"] > 0, 0)\n        return df\n\n    def define_test_input(test_case_id):\n        if test_case_id == 1:\n            df = pd.DataFrame.from_dict(\n                {\n                    \"id\": [\"A\", \"B\", \"A\", \"C\", \"D\", \"B\", \"C\"],\n                    \"val\": [1, 2, -3, 1, 5, 6, -2],\n                    \"stuff\": [\"12\", \"23232\", \"13\", \"1234\", \"3235\", \"3236\", \"732323\"],\n                }\n            )\n        elif test_case_id == 2:\n            np.random.seed(19260817)\n            df = pd.DataFrame(\n                {\n                    \"id\": [\"A\", \"B\"] * 10 + [\"C\"] * 10,\n                    \"val\": np.random.randint(0, 100, 30),\n                }\n            )\n        elif test_case_id == 3:\n            np.random.seed(19260817)\n            df = pd.DataFrame(\n                {\n                    \"id\": np.random.choice(list(\"ABCDE\"), 1000),\n                    \"val\": np.random.randint(-1000, 1000, 1000),\n                }\n            )\n        return df\n\n    test_input = define_test_input(test_case_id)\n    expected_result = generate_ans(copy.deepcopy(test_input))\n    return test_input, expected_result\n\n\ndef exec_test(result, ans):\n    try:\n        pd.testing.assert_frame_equal(result, ans, check_dtype=False)\n        return 1\n    except:\n        return 0\n\n\nexec_context = r\"\"\"\nimport pandas as pd\nimport numpy as np\ndf = test_input\n[insert]\nresult=df\n\"\"\"\n\n\ndef test_execution(solution: str):\n    code = exec_context.replace(\"[insert]\", solution)\n    for i in range(3):\n        test_input, expected_result = generate_test_case(i + 1)\n        test_env = {\"test_input\": test_input}\n        exec(code, test_env)\n        assert exec_test(test_env[\"result\"], expected_result)\n",
+    "is_solved": true,
+    "reflections": [],
+    "reflection_attempt_indices": [],
+    "implementations": [
+      "df['cumsum'] = df.groupby('id')['val'].cumsum().clip(lower=0)\nresult = df"
+    ],
+    "test_feedback": [
+      "Tests passed:\nDS1000 code_context test\n\nTests failed:"
+    ],
+    "procedural_skill": null,
+    "solution": "df['cumsum'] = df.groupby('id')['val'].cumsum().clip(lower=0)\nresult = df",
+    "memory_store_paths": {
+      "episodic": null,
+      "episodic_archive": null,
+      "procedural": null,
+      "successful_examples": "root/gpt-4.1-memory/7/memory/b7.successful_examples.json"
+    }
+  },
+  {
+    "prompt": "Problem:\nI have a dataframe that looks like this:\n     product     score\n0    1179160  0.424654\n1    1066490  0.424509\n2    1148126  0.422207\n3    1069104  0.420455\n4    1069105  0.414603\n..       ...       ...\n491  1160330  0.168784\n492  1069098  0.168749\n493  1077784  0.168738\n494  1193369  0.168703\n495  1179741  0.168684\n\n\nwhat I'm trying to achieve is to multiply certain score values corresponding to specific products by a constant.\nI have the products target of this multiplication in a list like this: [[1069104, 1069105], [1179159, 1179161]] (this is just a simplified\nexample, in reality it would be more than two products) and my goal is to obtain this:\nMultiply scores corresponding to products which between [1069104, 1069105] or [1179159, 1179161] by 10:\n     product     score\n0    1179160  4.24654\n1    1066490  0.424509\n2    1148126  0.422207\n3    1069104  4.204550\n4    1069105  4.146030\n..       ...       ...\n491  1160330  0.168784\n492  1069098  0.168749\n493  1077784  0.168738\n494  1193369  0.168703\n495  1179741  0.168684\n\n\nI know that exists DataFrame.multiply but checking the examples it works for full columns, and I just one to change those specific values.\n\n\nA:\n<code>\nimport pandas as pd\n\n\ndf = pd.DataFrame({'product': [1179160, 1066490, 1148126, 1069104, 1069105, 1160330, 1069098, 1077784, 1193369, 1179741],\n                   'score': [0.424654, 0.424509, 0.422207, 0.420455, 0.414603, 0.168784, 0.168749, 0.168738, 0.168703, 0.168684]})\nproducts = [[1069104, 1069105], [1066489, 1066491]]\n</code>\ndf = ... # put solution in this variable\nBEGIN SOLUTION\n<code>\n",
+    "reference_code": "for product in products:\n    df.loc[(df['product'] >= product[0]) & (df['product'] <= product[1]), 'score'] *= 10\n",
+    "metadata": {
+      "problem_id": 18,
+      "library_problem_id": 18,
+      "library": "Pandas",
+      "test_case_cnt": 2,
+      "perturbation_type": "Difficult-Rewrite",
+      "perturbation_origin_id": 16
+    },
+    "code_context": "import pandas as pd\nimport numpy as np\nimport copy\n\n\ndef generate_test_case(test_case_id):\n    def generate_ans(data):\n        data = data\n        df, prod_list = data\n        for product in prod_list:\n            df.loc[\n                (df[\"product\"] >= product[0]) & (df[\"product\"] <= product[1]), \"score\"\n            ] *= 10\n        return df\n\n    def define_test_input(test_case_id):\n        if test_case_id == 1:\n            df = pd.DataFrame(\n                {\n                    \"product\": [\n                        1179160,\n                        1066490,\n                        1148126,\n                        1069104,\n                        1069105,\n                        1160330,\n                        1069098,\n                        1077784,\n                        1193369,\n                        1179741,\n                    ],\n                    \"score\": [\n                        0.424654,\n                        0.424509,\n                        0.422207,\n                        0.420455,\n                        0.414603,\n                        0.168784,\n                        0.168749,\n                        0.168738,\n                        0.168703,\n                        0.168684,\n                    ],\n                }\n            )\n            products = [[1069104, 1069105], [1066489, 1066491]]\n        if test_case_id == 2:\n            df = pd.DataFrame(\n                {\n                    \"product\": [\n                        1179160,\n                        1066490,\n                        1148126,\n                        1069104,\n                        1069105,\n                        1160330,\n                        1069098,\n                        1077784,\n                        1193369,\n                        1179741,\n                    ],\n                    \"score\": [\n                        0.424654,\n                        0.424509,\n                        0.422207,\n                        0.420455,\n                        0.414603,\n                        0.168784,\n                        0.168749,\n                        0.168738,\n                        0.168703,\n                        0.168684,\n                    ],\n                }\n            )\n            products = [\n                [1069104, 1069105],\n            ]\n        return df, products\n\n    test_input = define_test_input(test_case_id)\n    expected_result = generate_ans(copy.deepcopy(test_input))\n    return test_input, expected_result\n\n\ndef exec_test(result, ans):\n    try:\n        pd.testing.assert_frame_equal(result, ans, check_dtype=False)\n        return 1\n    except:\n        return 0\n\n\nexec_context = r\"\"\"\nimport pandas as pd\nimport numpy as np\ndf, products = test_input\n[insert]\nresult = df\n\"\"\"\n\n\ndef test_execution(solution: str):\n    code = exec_context.replace(\"[insert]\", solution)\n    for i in range(2):\n        test_input, expected_result = generate_test_case(i + 1)\n        test_env = {\"test_input\": test_input}\n        exec(code, test_env)\n        assert exec_test(test_env[\"result\"], expected_result)\n",
+    "is_solved": true,
+    "reflections": [
+      "{\"library\": \"pandas\", \"task_family\": \"Assignment\", \"api_concepts\": \"boolean mask, loc assignment\", \"root_cause\": \"The code assumes 'products' always has at least two sublists, but in some test cases it does not, causing an IndexError.\", \"failed_assumption\": \"The code expects 'products' to always contain exactly two sublists for range masking.\", \"repair_action\": \"Iterate over all sublists in 'products', building a combined mask for all specified ranges, so the code works for any number of ranges.\", \"preserve_constraints\": \"Keep the DataFrame shape, columns, dtypes, and row ordering unchanged.\", \"confidence\": \"high\"}"
+    ],
+    "reflection_attempt_indices": [
+      0
+    ],
+    "implementations": [
+      "mask = (\n    ((df['product'] >= products[0][0]) & (df['product'] <= products[0][1])) |\n    ((df['product'] >= products[1][0]) & (df['product'] <= products[1][1]))\n)\ndf.loc[mask, 'score'] = df.loc[mask, 'score'] * 10\nresult = df",
+      "mask = False\nfor rng in products:\n    mask = mask | ((df['product'] >= rng[0]) & (df['product'] <= rng[1]))\ndf.loc[mask, 'score'] = df.loc[mask, 'score'] * 10\nresult = df"
+    ],
+    "test_feedback": [
+      "Tests passed:\n\nTests failed:\nIndexError: list index out of range\nTraceback (most recent call last):\n  File \"/Users/liudada/Desktop/programming/executors/ds1000_executor.py\", line 48, in _run_test\n    function_with_timeout(test_execution, (solution,), timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 40, in function_with_timeout\n    thread.join(timeout)\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 27, in join\n    raise self.exc\n  File \"/Users/liudada/Desktop/programming/executors/executor_utils.py\", line 20, in run\n    self.ret = self._target(*self._args, **self._kwargs)\nIndexError: list index out of range\n\n\nDS1000 diagnostic outputs:\nTestCase 1 failed (public example).\nactual_result: type=DataFrame\nshape=(10, 2)\ncolumns=['product', 'score']\ndtypes=product      int64\nscore      float64\ndtype: object\nvalue=   product     score\n0  1179160  0.424654\n1  1066490  4.245090\n2  1148126  0.422207\n3  1069104  4.204550\n4  1069105  4.146030\n5  1160330  0.168784\n6  1069098  0.168749\n7  1077784  0.168738\n8  1193369  0.168703\n9  1179741  0.168684\nexpected_result: type=DataFrame\nshape=(10, 2)\ncolumns=['product', 'score']\ndtypes=product      int64\nscore      float64\ndtype: object\nvalue=   product     score\n0  1179160  0.424654\n1  1066490  4.245090\n2  1148126  0.422207\n3  1069104  4.204550\n4  1069105  4.146030\n5  1160330  0.168784\n6  1069098  0.168749\n7  1077784  0.168738\n8  1193369  0.168703\n9  1179741  0.168684\n",
+      "Tests passed:\nDS1000 code_context test\n\nTests failed:"
+    ],
+    "procedural_skill": "{\"library\": \"pandas\", \"task_family\": \"Assignment\", \"retrieval_key\": \"conditional assignment over multiple value ranges\", \"api_concepts\": \"boolean masking, loc assignment, iterative mask construction\", \"procedure\": \"1. Initialize a boolean mask to False for all elements. 2. For each value range in the list of target ranges, update the mask by combining it with the condition that checks if each element falls within the current range. 3. After constructing the combined mask, apply the desired assignment only to the elements where the mask is True. 4. Ensure that all other elements remain unchanged.\", \"avoid_assumption\": \"Assuming a fixed number of ranges or conditions when constructing selection masks.\", \"applicability_conditions\": \"When conditional assignment is needed for elements matching any of several value ranges or conditions, especially when the number of ranges is variable.\", \"non_applicability_conditions\": \"When assignment applies to all elements, or only a single fixed range or condition is present.\", \"preserve_constraints\": \"Preserve DataFrame shape, column order, data types, and unaffected values and rows.\", \"verification\": \"Only elements matching any specified range are updated; all other elements and structure remain unchanged.\", \"confidence\": \"high\"}",
+    "solution": "mask = False\nfor rng in products:\n    mask = mask | ((df['product'] >= rng[0]) & (df['product'] <= rng[1]))\ndf.loc[mask, 'score'] = df.loc[mask, 'score'] * 10\nresult = df",
+    "memory_store_paths": {
+      "episodic": "root/gpt-4.1-memory/7/memory/b7.episodic_memory.json",
+      "episodic_archive": "root/gpt-4.1-memory/7/memory/b7.episodic_archive.json",
+      "procedural": "root/gpt-4.1-memory/7/memory/b7.procedural_memory.json",
+      "successful_examples": null
+    }
+  },
+  {
+    "prompt": "Problem:\nMy sample df has four columns with NaN values. The goal is to concatenate all the kewwords rows from end to front while excluding the NaN values. \nimport pandas as pd\nimport numpy as np\ndf = pd.DataFrame({'users': ['Hu Tao', 'Zhongli', 'Xingqiu'],\n                   'keywords_0': [\"a\", np.nan, \"c\"],\n                   'keywords_1': [\"d\", \"e\", np.nan],\n                   'keywords_2': [np.nan, np.nan, \"b\"],\n                   'keywords_3': [\"f\", np.nan, \"g\"]})\n\n\n     users keywords_0 keywords_1 keywords_2 keywords_3\n0   Hu Tao          a          d        NaN          f\n1  Zhongli        NaN          e        NaN        NaN\n2  Xingqiu          c        NaN          b          g\n\n\nWant to accomplish the following:\n     users keywords_0 keywords_1 keywords_2 keywords_3 keywords_all\n0   Hu Tao          a          d        NaN          f        f-d-a\n1  Zhongli        NaN          e        NaN        NaN            e\n2  Xingqiu          c        NaN          b          g        g-b-c\n\n\nPseudo code:\ncols = [df.keywords_0, df.keywords_1, df.keywords_2, df.keywords_3]\ndf[\"keywords_all\"] = df[\"keywords_all\"].apply(lambda cols: \"-\".join(cols), axis=1)\n\n\nI know I can use \"-\".join() to get the exact result, but I am unsure how to pass the column names into the function.\n\n\nA:\n<code>\nimport pandas as pd\nimport numpy as np\n\n\ndf = pd.DataFrame({'users': ['Hu Tao', 'Zhongli', 'Xingqiu'],\n                   'keywords_0': [\"a\", np.nan, \"c\"],\n                   'keywords_1': [\"d\", \"e\", np.nan],\n                   'keywords_2': [np.nan, np.nan, \"b\"],\n                   'keywords_3': [\"f\", np.nan, \"g\"]})\n</code>\ndf = ... # put solution in this variable\nBEGIN SOLUTION\n<code>\n",
+    "reference_code": "import numpy as np\ndef g(df):\n    df[\"keywords_all\"] = df.filter(like='keyword').apply(lambda x: '-'.join(x.dropna()), axis=1)\n    for i in range(len(df)):\n        df.loc[i, \"keywords_all\"] = df.loc[i, \"keywords_all\"][::-1]\n    return df\n\ndf = g(df.copy())\n",
+    "metadata": {
+      "problem_id": 126,
+      "library_problem_id": 126,
+      "library": "Pandas",
+      "test_case_cnt": 2,
+      "perturbation_type": "Difficult-Rewrite",
+      "perturbation_origin_id": 123
+    },
+    "code_context": "import pandas as pd\nimport numpy as np\nimport copy\n\n\ndef generate_test_case(test_case_id):\n    def generate_ans(data):\n        df = data\n        df[\"keywords_all\"] = df.filter(like=\"keyword\").apply(\n            lambda x: \"-\".join(x.dropna()), axis=1\n        )\n        for i in range(len(df)):\n            df.loc[i, \"keywords_all\"] = df.loc[i, \"keywords_all\"][::-1]\n        return df\n\n    def define_test_input(test_case_id):\n        if test_case_id == 1:\n            df = pd.DataFrame(\n                {\n                    \"users\": [\"Hu Tao\", \"Zhongli\", \"Xingqiu\"],\n                    \"keywords_0\": [\"a\", np.nan, \"c\"],\n                    \"keywords_1\": [\"d\", \"e\", np.nan],\n                    \"keywords_2\": [np.nan, np.nan, \"b\"],\n                    \"keywords_3\": [\"f\", np.nan, \"g\"],\n                }\n            )\n        if test_case_id == 2:\n            df = pd.DataFrame(\n                {\n                    \"users\": [\"Hu Tao\", \"Zhongli\", \"Xingqiu\"],\n                    \"keywords_0\": [\"a\", np.nan, \"c\"],\n                    \"keywords_1\": [\"b\", \"g\", np.nan],\n                    \"keywords_2\": [np.nan, np.nan, \"j\"],\n                    \"keywords_3\": [\"d\", np.nan, \"b\"],\n                }\n            )\n        return df\n\n    test_input = define_test_input(test_case_id)\n    expected_result = generate_ans(copy.deepcopy(test_input))\n    return test_input, expected_result\n\n\ndef exec_test(result, ans):\n    try:\n        pd.testing.assert_frame_equal(result, ans, check_dtype=False)\n        return 1\n    except:\n        return 0\n\n\nexec_context = r\"\"\"\nimport pandas as pd\nimport numpy as np\ndf = test_input\n[insert]\nresult = df\n\"\"\"\n\n\ndef test_execution(solution: str):\n    code = exec_context.replace(\"[insert]\", solution)\n    for i in range(2):\n        test_input, expected_result = generate_test_case(i + 1)\n        test_env = {\"test_input\": test_input}\n        exec(code, test_env)\n        assert exec_test(test_env[\"result\"], expected_result)\n",
+    "is_solved": true,
+    "reflections": [],
+    "reflection_attempt_indices": [],
+    "implementations": [
+      "cols = ['keywords_0', 'keywords_1', 'keywords_2', 'keywords_3']\ndf['keywords_all'] = df[cols[::-1]].apply(lambda row: '-'.join([str(x) for x in row if pd.notna(x)]), axis=1)\nresult = df"
+    ],
+    "test_feedback": [
+      "Tests passed:\nDS1000 code_context test\n\nTests failed:"
+    ],
+    "procedural_skill": null,
+    "solution": "cols = ['keywords_0', 'keywords_1', 'keywords_2', 'keywords_3']\ndf['keywords_all'] = df[cols[::-1]].apply(lambda row: '-'.join([str(x) for x in row if pd.notna(x)]), axis=1)\nresult = df",
+    "memory_store_paths": {
+      "episodic": null,
+      "episodic_archive": null,
+      "procedural": null,
+      "successful_examples": "root/gpt-4.1-memory/7/memory/b7.successful_examples.json"
+    }
+  },
+  {
+    "prompt": "Problem:\nI have a dataframe with one of its column having a list at each index. I want to concatenate these lists into one list. I am using \nids = df.loc[0:index, 'User IDs'].values.tolist()\n\n\nHowever, this results in \n['[1,2,3,4......]'] which is a string. Somehow each value in my list column is type str. I have tried converting using list(), literal_eval() but it does not work. The list() converts each element within a list into a string e.g. from [12,13,14...] to ['['1'',','2',','1',',','3'......]'].\nHow to concatenate pandas column with list values into one list? Kindly help out, I am banging my head on it for several hours. \n\n\nA:\n<code>\nimport pandas as pd\n\n\ndf = pd.DataFrame(dict(col1=[[1, 2, 3]] * 2))\n</code>\nresult = ... # put solution in this variable\nBEGIN SOLUTION\n<code>\n",
+    "reference_code": "def g(df):\n    return df.col1.sum()\n\nresult = g(df.copy())\n",
+    "metadata": {
+      "problem_id": 254,
+      "library_problem_id": 254,
+      "library": "Pandas",
+      "test_case_cnt": 1,
+      "perturbation_type": "Origin",
+      "perturbation_origin_id": 254
+    },
+    "code_context": "import pandas as pd\nimport numpy as np\nimport copy\n\n\ndef generate_test_case(test_case_id):\n    def generate_ans(data):\n        df = data\n        return df.col1.sum()\n\n    def define_test_input(test_case_id):\n        if test_case_id == 1:\n            df = pd.DataFrame(dict(col1=[[1, 2, 3]] * 2))\n        return df\n\n    test_input = define_test_input(test_case_id)\n    expected_result = generate_ans(copy.deepcopy(test_input))\n    return test_input, expected_result\n\n\ndef exec_test(result, ans):\n    try:\n        assert result == ans\n        return 1\n    except:\n        return 0\n\n\nexec_context = r\"\"\"\nimport pandas as pd\nimport numpy as np\ndf = test_input\n[insert]\n\"\"\"\n\n\ndef test_execution(solution: str):\n    code = exec_context.replace(\"[insert]\", solution)\n    for i in range(1):\n        test_input, expected_result = generate_test_case(i + 1)\n        test_env = {\"test_input\": test_input}\n        exec(code, test_env)\n        assert exec_test(test_env[\"result\"], expected_result)\n",
+    "is_solved": true,
+    "reflections": [],
+    "reflection_attempt_indices": [],
+    "implementations": [
+      "import ast\nresult = sum([ast.literal_eval(str(x)) if isinstance(x, str) else x for x in df['col1']], [])"
+    ],
+    "test_feedback": [
+      "Tests passed:\nDS1000 code_context test\n\nTests failed:"
+    ],
+    "procedural_skill": null,
+    "solution": "import ast\nresult = sum([ast.literal_eval(str(x)) if isinstance(x, str) else x for x in df['col1']], [])",
+    "memory_store_paths": {
+      "episodic": null,
+      "episodic_archive": null,
+      "procedural": null,
+      "successful_examples": "root/gpt-4.1-memory/7/memory/b7.successful_examples.json"
+    }
+  }
+]

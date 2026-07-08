@@ -1,6 +1,6 @@
 import warnings
 from lazzzy.ucs import ucs
-from utils import enumerate_resume, write_jsonl
+from utils import enumerate_resume, write_jsonl, resume_success_count
 from executors import executor_factory
 from generators import generator_factory, model_factory
 
@@ -55,7 +55,7 @@ def run_reflexion_ucs(
     model = model_factory(model_name)
 
     num_items = len(dataset)
-    num_success = 0
+    num_success = resume_success_count(dataset, log_path)
     for i, item in enumerate_resume(dataset, log_path):
         cur_pass = 0
         is_solved = False
@@ -180,4 +180,4 @@ def run_reflexion_ucs(
 
         if verbose:
             print(
-                f'completed {i+1}/{num_items}: acc = {round(num_success/(i+1), 2)}')
+                f'completed {i+1}/{num_items}: solved={num_success}/{i+1}, acc = {round(num_success/(i+1), 4)}')

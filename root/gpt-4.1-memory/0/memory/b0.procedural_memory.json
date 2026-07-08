@@ -1,0 +1,48 @@
+[
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "procedural",
+    "created_at": "2026-06-13T07:40:06.728720+00:00",
+    "skill_id": "e1dcf3ce8295ed16370f630e",
+    "support_count": 1,
+    "dataset": "ds1000",
+    "item_index": 2,
+    "problem_id": 6,
+    "library_problem_id": 6,
+    "library": "Pandas",
+    "skill": {
+      "library": "pandas",
+      "task_family": "DataFrame conditional value replacement based on frequency with exceptions",
+      "api_concepts": "value_counts, apply, set operations, boolean mask",
+      "procedure": "1. For each target column, compute value_counts to determine frequency of each value. 2. Identify values to keep based on a specified frequency threshold. 3. If an exception value (e.g., 'apple') must always be preserved, add it to the set of values to keep regardless of its frequency. 4. Replace values not in the keep set with a designated replacement (e.g., 'other') using apply or vectorized operations. 5. Repeat for all relevant columns.",
+      "applicability_conditions": "Apply when replacing DataFrame column values based on frequency thresholds, and a specific value must always be preserved regardless of its frequency.",
+      "non_applicability_conditions": "Do not apply when no exception value is specified, or when replacement is not based on value_counts thresholds.",
+      "preserve_constraints": "Preserve DataFrame shape, column names, and data types; only modify values according to frequency and exception rules.",
+      "verification": "Success is confirmed when all occurrences of the exception value are preserved in all relevant columns, and other values are replaced according to the frequency threshold and exception rule.",
+      "confidence": "high"
+    },
+    "evidence": {
+      "reflection": {
+        "library": "pandas",
+        "task_family": "pandas value_counts conditional replacement with exception",
+        "api_concepts": "value_counts, apply, boolean mask, set operations",
+        "task_intent": "Replace values in each column based on frequency thresholds, with exceptions for specific values.",
+        "prompt_evidence": "However I want to reserve all the 'apple'. That means don't replace 'apple' with 'other' and only 'egg' should be replaced.",
+        "observed_failure": "In column Qu3, 'apple' was replaced with 'other', but the expected result keeps 'apple' unchanged.",
+        "bug_pattern": "Failed to reserve all 'apple' values in Qu3; applied frequency-based replacement without exception for 'apple'.",
+        "failed_assumption": "The code assumed the 'reserve all apple' rule applied only to Qu1, not to Qu3.",
+        "applicability_conditions": "When replacing values in columns based on value_counts thresholds, and the prompt specifies to always reserve all occurrences of a specific value (e.g., 'apple') regardless of frequency.",
+        "non_applicability_conditions": "When no explicit exception for a value is stated, or the exception is limited to only one column.",
+        "repair_pattern": "Always include the reserved value (e.g., 'apple') in the set of values to keep for every relevant column, regardless of its frequency.",
+        "repair_steps": "For each column, after determining values to keep based on value_counts threshold, add 'apple' to the set of values to keep before applying the replacement logic.",
+        "preserve_constraints": "Do not change output shape, column names, or data types; only modify replacement logic to preserve 'apple' as specified.",
+        "validation_check": "Verify that all 'apple' values in every column are preserved in the output, and other values are replaced according to the frequency rule and exception.",
+        "memory_eligible": "yes",
+        "confidence": "high"
+      },
+      "success_patch": "result = df.copy()\n# For Qu1: keep 'cheese' (>=3) and all 'apple', others -> 'other'\nvc1 = result['Qu1'].value_counts()\nto_keep1 = set(vc1[vc1 >= 3].index) | {'apple'}\nresult['Qu1'] = result['Qu1'].apply(lambda x: x if x in to_keep1 else 'other')\n\n# For Qu2: keep all values with count >=2, and always keep 'apple', others -> 'other'\nvc2 = result['Qu2'].value_counts()\nto_keep2 = set(vc2[vc2 >= 2].index) | {'apple'}\nresult['Qu2'] = result['Qu2'].apply(lambda x: x if x in to_keep2 else 'other')\n\n# For Qu3: keep all values with count >=2, and always keep 'apple', others -> 'other'\nvc3 = result['Qu3'].value_counts()\nto_keep3 = set(vc3[vc3 >= 2].index) | {'apple'}\nresult['Qu3'] = result['Qu3'].apply(lambda x: x if x in to_keep3 else 'other')",
+      "patch_diff": "--- failed_code+++ successful_code@@ -4,12 +4,12 @@ to_keep1 = set(vc1[vc1 >= 3].index) | {'apple'}\n result['Qu1'] = result['Qu1'].apply(lambda x: x if x in to_keep1 else 'other')\n \n-# For Qu2: keep all values with count >=2, others -> 'other' (but in this data, all >=2, so no change)\n+# For Qu2: keep all values with count >=2, and always keep 'apple', others -> 'other'\n vc2 = result['Qu2'].value_counts()\n-to_keep2 = set(vc2[vc2 >= 2].index)\n+to_keep2 = set(vc2[vc2 >= 2].index) | {'apple'}\n result['Qu2'] = result['Qu2'].apply(lambda x: x if x in to_keep2 else 'other')\n \n-# For Qu3: keep all values with count >=2, others -> 'other'\n+# For Qu3: keep all values with count >=2, and always keep 'apple', others -> 'other'\n vc3 = result['Qu3'].value_counts()\n-to_keep3 = set(vc3[vc3 >= 2].index)\n+to_keep3 = set(vc3[vc3 >= 2].index) | {'apple'}\n result['Qu3'] = result['Qu3'].apply(lambda x: x if x in to_keep3 else 'other')",
+      "success_verification": "Tests passed:\nDS1000 code_context test\n\nTests failed:"
+    }
+  }
+]

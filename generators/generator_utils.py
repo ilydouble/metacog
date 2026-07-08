@@ -124,7 +124,7 @@ def generic_generate_internal_tests(
                     content=f"{test_generation_few_shot}\n\n[func signature]:\n{func_sig}\n\n[think]:"
                 )
             ]
-            output = model.generate_chat(messages=messages, max_tokens=1024)
+            output = model.generate_chat(messages=messages, max_tokens=4096)
             print(f'React test generation output: {output}')
         else:
             messages = [
@@ -137,10 +137,10 @@ def generic_generate_internal_tests(
                     content=f"{test_generation_few_shot}\n\n[func signature]:\n{func_sig}\n\n[unit tests]:",
                 )
             ]
-            output = model.generate_chat(messages=messages, max_tokens=1024)
+            output = model.generate_chat(messages=messages, max_tokens=4096)
     else:
         prompt = f'{test_generation_completion_instruction}\n\nfunc signature:\n{func_sig}\nunit tests:'
-        output = model.generate(prompt, max_tokens=1024)
+        output = model.generate(prompt, max_tokens=4096)
     all_tests = parse_tests(output)  # type: ignore
     valid_tests = [test for test in all_tests if is_syntax_valid(test)]
 

@@ -1,0 +1,47 @@
+[
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "successful_example",
+    "created_at": "2026-06-17T08:36:18.971624+00:00",
+    "example_id": "e0f2d383dceaab5f70fe7052",
+    "dataset": "ds1000",
+    "item_index": 2,
+    "problem_id": 119,
+    "library_problem_id": 119,
+    "library": "Pandas",
+    "prompt": "Problem:\nI am trying to delete rows from a Pandas dataframe using a list of row names, but it can't be done. Here is an example\n\n\n# df\n    alleles  chrom  pos strand  assembly#  center  protLSID  assayLSID  \nrs#\nTP3      A/C      0    3      +        NaN     NaN       NaN        NaN\nTP7      A/T      0    7      +        NaN     NaN       NaN        NaN\nTP12     T/A      0   12      +        NaN     NaN       NaN        NaN\nTP15     C/A      0   15      +        NaN     NaN       NaN        NaN\nTP18     C/T      0   18      +        NaN     NaN       NaN        NaN\n\n\ntest = ['TP3','TP12','TP18']\nAny help would be appreciated.\n\nA:\n<code>\nimport pandas as pd\nimport io\n\ndata = io.StringIO(\"\"\"\nrs  alleles  chrom  pos strand  assembly#  center  protLSID  assayLSID\nTP3      A/C      0    3      +        NaN     NaN       NaN        NaN\nTP7      A/T      0    7      +        NaN     NaN       NaN        NaN\nTP12     T/A      0   12      +        NaN     NaN       NaN        NaN\nTP15     C/A      0   15      +        NaN     NaN       NaN        NaN\nTP18     C/T      0   18      +        NaN     NaN       NaN        NaN\n\"\"\")\ndf = pd.read_csv(data, delim_whitespace=True).set_index('rs')\ntest = ['TP3', 'TP7', 'TP18']\n</code>\nresult = ... # put solution in this variable\nBEGIN SOLUTION\n<code>\n",
+    "successful_solution": "result = df.drop(test)",
+    "reference_code": "result = df.drop(test, inplace = False)\n",
+    "success_feedback": "Tests passed:\nDS1000 code_context test\n\nTests failed:"
+  },
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "successful_example",
+    "created_at": "2026-06-17T08:36:20.432699+00:00",
+    "example_id": "748036a16cbb5852ddbb5fe7",
+    "dataset": "ds1000",
+    "item_index": 3,
+    "problem_id": 289,
+    "library_problem_id": 289,
+    "library": "Pandas",
+    "prompt": "Problem:\nContext\nI'm trying to merge two big CSV files together.\nProblem\nLet's say I've one Pandas DataFrame like the following...\nEntityNum    foo   ...\n------------------------\n1001.01      100\n1002.02       50\n1003.03      200\n\n\nAnd another one like this...\nEntityNum    a_col    b_col\n-----------------------------------\n1001.01      alice        7  \n1002.02        bob        8\n1003.03        777        9\n\n\nI'd like to join them like this: \nEntityNum    foo    a_col\n----------------------------\n1001.01      100    alice\n1002.02       50      bob\n1003.03      200      777\n\n\nSo Keep in mind, I don't want b_col in the final result. How do I I accomplish this with Pandas? \nUsing SQL, I should probably have done something like: \nSELECT t1.*, t2.a_col FROM table_1 as t1\n                      LEFT JOIN table_2 as t2\n                      ON t1.EntityNum = t2.EntityNum; \n\n\nSearch\nI know it is possible to use merge. This is what I've tried: \nimport pandas as pd\ndf_a = pd.read_csv(path_a, sep=',')\ndf_b = pd.read_csv(path_b, sep=',')\ndf_c = pd.merge(df_a, df_b, on='EntityNumber')\n\n\nBut I'm stuck when it comes to avoiding some of the unwanted columns in the final dataframe.\n\n\nA:\n<code>\nimport pandas as pd\n\n\ndf_a = pd.DataFrame({'EntityNum':[1001.01,1002.02,1003.03],'foo':[100,50,200]})\ndf_b = pd.DataFrame({'EntityNum':[1001.01,1002.02,1003.03],'a_col':['alice','bob','777'],'b_col':[7,8,9]})\n</code>\nresult = ... # put solution in this variable\nBEGIN SOLUTION\n<code>\n",
+    "successful_solution": "result = pd.merge(df_a, df_b[['EntityNum', 'a_col']], on='EntityNum')",
+    "reference_code": "def g(df_a, df_b):\n    return df_a[['EntityNum', 'foo']].merge(df_b[['EntityNum', 'a_col']], on='EntityNum', how='left')\n\nresult = g(df_a.copy(), df_b.copy())\n",
+    "success_feedback": "Tests passed:\nDS1000 code_context test\n\nTests failed:"
+  },
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "successful_example",
+    "created_at": "2026-06-17T08:36:21.529840+00:00",
+    "example_id": "e5b551262a946b7d48cff560",
+    "dataset": "ds1000",
+    "item_index": 4,
+    "problem_id": 41,
+    "library_problem_id": 41,
+    "library": "Pandas",
+    "prompt": "Problem:\nI have a dataframe with numerous columns (≈30) from an external source (csv file) but several of them have no value or always the same. Thus, I would to see quickly the value_counts for each column. How can i do that?\nFor example\n  id, temp, name\n1 34, null, mark\n2 22, null, mark\n3 34, null, mark\n\nPlease return a String like this:\n\n---- id ---\n34    2\n22    1\nName: id, dtype: int64\n---- temp ---\nnull    3\nName: temp, dtype: int64\n---- name ---\nmark    3\nName: name, dtype: int64\n\nSo I would know that temp is irrelevant and name is not interesting (always the same)\n\nA:\n<code>\nimport pandas as pd\n\ndf = pd.DataFrame(data=[[34, 'null', 'mark'], [22, 'null', 'mark'], [34, 'null', 'mark']], columns=['id', 'temp', 'name'], index=[1, 2, 3])\n</code>\nresult = ... # put solution in this variable\nBEGIN SOLUTION\n<code>\n",
+    "successful_solution": "result = \"\"\nfor col in df.columns:\n    result += f\"---- {col} ---\\n\"\n    result += str(df[col].value_counts()) + \"\\n\"",
+    "reference_code": "def g(df):\n    s = ''\n    for c in df.columns:\n        s += \"---- %s ---\" % c\n        s += \"\\n\"\n        s += str(df[c].value_counts())\n        s += \"\\n\"\n    return s\n\nresult = g(df.copy())\n",
+    "success_feedback": "Tests passed:\nDS1000 code_context test\n\nTests failed:"
+  }
+]

@@ -1,4 +1,4 @@
-from utils import enumerate_resume, make_printv, write_jsonl
+from utils import enumerate_resume, make_printv, write_jsonl, resume_success_count
 from executors import executor_factory
 from generators import generator_factory, model_factory
 
@@ -22,7 +22,7 @@ def run_immediate_reflexion(
     print_v = make_printv(verbose)
 
     num_items = len(dataset)
-    num_success = 0
+    num_success = resume_success_count(dataset, log_path)
     for i, item in enumerate_resume(dataset, log_path):
         cur_pass = 0
         is_solved = False
@@ -67,4 +67,4 @@ def run_immediate_reflexion(
         write_jsonl(log_path, [item], append=True)
 
         print_v(
-            f'completed {i+1}/{num_items}: acc = {round(num_success/(i+1), 2)}')
+            f'completed {i+1}/{num_items}: solved={num_success}/{i+1}, acc = {round(num_success/(i+1), 4)}')

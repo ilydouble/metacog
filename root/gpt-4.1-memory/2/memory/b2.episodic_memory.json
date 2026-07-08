@@ -1,0 +1,54 @@
+[
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "episodic",
+    "created_at": "2026-06-17T08:36:03.619682+00:00",
+    "episode_id": "6b97cff2635da8fbb0d9d6c0",
+    "retrieval_text": "library: Pandas\ntask_family: pandas conditional row selection and column subset\ntask_intent: Select rows where column 'c' > 0.45 and only columns 'a', 'b', and 'e', returning a DataFrame.\nfailure_signature: Converting the result to a numpy array when the prompt requires a DataFrame output, losing column names and DataFrame structure.\nrepair_action: Return the filtered DataFrame directly without converting to numpy array, preserving column names and DataFrame structure.",
+    "library": "Pandas",
+    "task_family": "pandas conditional row selection and column subset",
+    "task_intent": "Select rows where column 'c' > 0.45 and only columns 'a', 'b', and 'e', returning a DataFrame.",
+    "error_type": "AssertionError",
+    "failure_signature": "Converting the result to a numpy array when the prompt requires a DataFrame output, losing column names and DataFrame structure.",
+    "failed_assumption": "Assumed the output should be a numpy array, but the prompt and tests require a DataFrame.",
+    "repair_action": "Return the filtered DataFrame directly without converting to numpy array, preserving column names and DataFrame structure.",
+    "failure_snapshot": {
+      "type": "wrong_output",
+      "location": "output type",
+      "observed": "ndarray",
+      "expected": "DataFrame",
+      "reason": "output type differs from expected output"
+    },
+    "repair_success": true,
+    "archive_ref": "6b97cff2635da8fbb0d9d6c0",
+    "item_index": 0,
+    "problem_id": 69,
+    "fixed_code": "result = df.loc[df['c'] > 0.45, columns]"
+  },
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "episodic",
+    "created_at": "2026-06-17T08:36:17.436051+00:00",
+    "episode_id": "075b093b45bd922fd1fc5d36",
+    "retrieval_text": "library: Pandas\ntask_family: pandas melt reshape column order preservation\ntask_intent: Reshape wide date columns into long format with 'date' and 'value' columns, preserving original column order.\nfailure_signature: The code produces correct data but does not match the required column order in the output DataFrame.\nrepair_action: Reorder the columns of the resulting DataFrame to match the required order as specified in the prompt or expected output.",
+    "library": "Pandas",
+    "task_family": "pandas melt reshape column order preservation",
+    "task_intent": "Reshape wide date columns into long format with 'date' and 'value' columns, preserving original column order.",
+    "error_type": "AssertionError",
+    "failure_signature": "The code produces correct data but does not match the required column order in the output DataFrame.",
+    "failed_assumption": "Assumed that the column order after melt and dropna does not matter or will match the example automatically.",
+    "repair_action": "Reorder the columns of the resulting DataFrame to match the required order as specified in the prompt or expected output.",
+    "failure_snapshot": {
+      "type": "wrong_output",
+      "location": "line 1",
+      "observed": "user  someBool      date  value",
+      "expected": "user      date  value  someBool",
+      "reason": "first text line differs from expected output"
+    },
+    "repair_success": true,
+    "archive_ref": "075b093b45bd922fd1fc5d36",
+    "item_index": 1,
+    "problem_id": 67,
+    "fixed_code": "df = df.melt(id_vars=['user', 'someBool'], var_name='date', value_name='value')\ndf = df.dropna(subset=['value']).sort_values(['user', 'date']).reset_index(drop=True)\ndf = df[['user', 'date', 'value', 'someBool']]\nresult = df"
+  }
+]

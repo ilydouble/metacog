@@ -1,0 +1,76 @@
+[
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "episodic",
+    "created_at": "2026-06-17T08:54:55.259782+00:00",
+    "episode_id": "2b8b1e53cf2e95fbfe943b32",
+    "retrieval_text": "library: Pandas\ntask_family: unknown\ntask_intent: unknown\nfailure_signature: unknown\nrepair_action: unknown",
+    "library": "Pandas",
+    "task_family": "unknown",
+    "task_intent": "unknown",
+    "error_type": "KeyError",
+    "failure_signature": "unknown",
+    "failed_assumption": "unknown",
+    "repair_action": "unknown",
+    "failure_snapshot": {
+      "type": "key_error",
+      "location": "cokey",
+      "observed": "\"['cokey'] not in index\"",
+      "expected": "available key or dataframe column"
+    },
+    "repair_success": false,
+    "archive_ref": "2b8b1e53cf2e95fbfe943b32",
+    "item_index": 0,
+    "problem_id": 160
+  },
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "episodic",
+    "created_at": "2026-06-17T08:55:10.841043+00:00",
+    "episode_id": "18096621498df9cdec21b54d",
+    "retrieval_text": "library: Pandas\ntask_family: conditional value update based on multiple ranges\ntask_intent: Multiply the 'score' values for products whose 'product' value falls within any of several specified ranges by a constant.\nfailure_signature: Code assumes a fixed number of ranges in the products list, leading to IndexError when the list length changes.\nrepair_action: Iterate over all ranges in the products list, build a combined boolean mask using logical OR, and apply the update to all matching rows.",
+    "library": "Pandas",
+    "task_family": "conditional value update based on multiple ranges",
+    "task_intent": "Multiply the 'score' values for products whose 'product' value falls within any of several specified ranges by a constant.",
+    "error_type": "IndexError",
+    "failure_signature": "Code assumes a fixed number of ranges in the products list, leading to IndexError when the list length changes.",
+    "failed_assumption": "The failed code assumes products always contains exactly two ranges, directly indexing products[0] and products[1].",
+    "repair_action": "Iterate over all ranges in the products list, build a combined boolean mask using logical OR, and apply the update to all matching rows.",
+    "failure_snapshot": {
+      "type": "key_error",
+      "location": "list index out of range",
+      "observed": "list index out of range",
+      "expected": "available key or dataframe column"
+    },
+    "repair_success": true,
+    "archive_ref": "18096621498df9cdec21b54d",
+    "item_index": 2,
+    "problem_id": 18,
+    "fixed_code": "mask = pd.Series([False] * len(df))\nfor rng in products:\n    mask |= (df['product'] >= rng[0]) & (df['product'] <= rng[1])\ndf.loc[mask, 'score'] = df.loc[mask, 'score'] * 10\nresult = df"
+  },
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "episodic",
+    "created_at": "2026-06-17T08:55:24.733633+00:00",
+    "episode_id": "af13551e3f0073d82da66b7b",
+    "retrieval_text": "library: Pandas\ntask_family: pandas column list concatenation\ntask_intent: Concatenate all lists stored in a pandas column into a single list, handling cases where the column contains string representations of lists.\nfailure_signature: Blindly applying eval to all column values without checking their type causes errors when the values are already lists.\nrepair_action: Apply a function that checks the type of each value: if it's a string, parse it to a list (e.g., using ast.literal_eval); if it's already a list, use as-is. Then concatenate all lists.",
+    "library": "Pandas",
+    "task_family": "pandas column list concatenation",
+    "task_intent": "Concatenate all lists stored in a pandas column into a single list, handling cases where the column contains string representations of lists.",
+    "error_type": "TypeError",
+    "failure_signature": "Blindly applying eval to all column values without checking their type causes errors when the values are already lists.",
+    "failed_assumption": "Assumed all column values are string representations of lists, but some may already be lists.",
+    "repair_action": "Apply a function that checks the type of each value: if it's a string, parse it to a list (e.g., using ast.literal_eval); if it's already a list, use as-is. Then concatenate all lists.",
+    "failure_snapshot": {
+      "type": "key_error",
+      "location": "eval() arg 1 must be a string, bytes or code object",
+      "observed": "eval() arg 1 must be a string, bytes or code object",
+      "expected": "available key or dataframe column"
+    },
+    "repair_success": true,
+    "archive_ref": "af13551e3f0073d82da66b7b",
+    "item_index": 4,
+    "problem_id": 254,
+    "fixed_code": "import ast\nresult = sum(df['col1'].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else x).tolist(), [])"
+  }
+]

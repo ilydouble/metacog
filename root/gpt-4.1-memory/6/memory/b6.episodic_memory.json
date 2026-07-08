@@ -1,0 +1,100 @@
+[
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "episodic",
+    "created_at": "2026-06-20T08:20:35.137785+00:00",
+    "episode_id": "499420481eb3337b8e3c6da8",
+    "retrieval_text": "library: Pandas\ntask_family: Aggregation\ntask_intent: Sort each group in the DataFrame by column 'A' and return the result with a MultiIndex.\nfailure_signature: reset_index(drop=False) after groupby.apply creates duplicate columns if the grouping column is already present in the DataFrame, leading to a ValueError when setting the index.\nrepair_action: After groupby.apply, reset the index with drop=True to avoid duplicating the grouping column, then set the MultiIndex as needed.",
+    "library": "Pandas",
+    "task_family": "Aggregation",
+    "task_intent": "Sort each group in the DataFrame by column 'A' and return the result with a MultiIndex.",
+    "error_type": "ValueError",
+    "failure_signature": "reset_index(drop=False) after groupby.apply creates duplicate columns if the grouping column is already present in the DataFrame, leading to a ValueError when setting the index.",
+    "failed_assumption": "Assumed that resetting the index with drop=False would not duplicate the grouping column, even though it is already present.",
+    "repair_action": "After groupby.apply, reset the index with drop=True to avoid duplicating the grouping column, then set the MultiIndex as needed.",
+    "failure_snapshot": {
+      "type": "value_error",
+      "location": "/Users/liudada/Desktop/programming/executors/executor_utils.py:20 in run",
+      "observed": "cannot insert cokey, already exists",
+      "expected": "valid value or dtype-compatible input"
+    },
+    "repair_success": false,
+    "archive_ref": "499420481eb3337b8e3c6da8",
+    "item_index": 0,
+    "problem_id": 160
+  },
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "episodic",
+    "created_at": "2026-06-20T08:20:51.961915+00:00",
+    "episode_id": "340ef6562a07852da17c0f31",
+    "retrieval_text": "library: Pandas\ntask_family: Filtering\ntask_intent: Select rows where column 'c' > 0.45 and only columns 'a', 'b', and 'e', returning a DataFrame.\nfailure_signature: Converting the filtered DataFrame to a numpy array when the expected output is a DataFrame.\nrepair_action: Return the filtered and column-selected DataFrame directly, without converting to numpy array.",
+    "library": "Pandas",
+    "task_family": "Filtering",
+    "task_intent": "Select rows where column 'c' > 0.45 and only columns 'a', 'b', and 'e', returning a DataFrame.",
+    "error_type": "AssertionError",
+    "failure_signature": "Converting the filtered DataFrame to a numpy array when the expected output is a DataFrame.",
+    "failed_assumption": "Assumed the result should be a numpy array for downstream use, but the test expects a DataFrame.",
+    "repair_action": "Return the filtered and column-selected DataFrame directly, without converting to numpy array.",
+    "failure_snapshot": {
+      "type": "wrong_output",
+      "location": "output type",
+      "observed": "ndarray",
+      "expected": "DataFrame"
+    },
+    "repair_success": true,
+    "archive_ref": "340ef6562a07852da17c0f31",
+    "item_index": 5,
+    "problem_id": 69,
+    "fixed_code": "result = df.loc[df['c'] > 0.45, columns]"
+  },
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "episodic",
+    "created_at": "2026-06-20T08:21:05.139500+00:00",
+    "episode_id": "787b0255cb0c073b80f1bb6f",
+    "retrieval_text": "library: Pandas\ntask_family: Reshaping\ntask_intent: Reshape the DataFrame so that date columns are melted into 'date' and 'value' columns, preserving 'user' and 'someBool'.\nfailure_signature: The code produces the correct data but does not match the required column order in the output DataFrame.\nrepair_action: Reorder the columns of the output DataFrame to match the required order as specified in the prompt or expected output.",
+    "library": "Pandas",
+    "task_family": "Reshaping",
+    "task_intent": "Reshape the DataFrame so that date columns are melted into 'date' and 'value' columns, preserving 'user' and 'someBool'.",
+    "error_type": "AssertionError",
+    "failure_signature": "The code produces the correct data but does not match the required column order in the output DataFrame.",
+    "failed_assumption": "Assumed that the column order after melt and selection does not matter for correctness.",
+    "repair_action": "Reorder the columns of the output DataFrame to match the required order as specified in the prompt or expected output.",
+    "failure_snapshot": {
+      "type": "wrong_output",
+      "location": "line 1",
+      "observed": "user  someBool      date  value",
+      "expected": "user      date  value  someBool"
+    },
+    "repair_success": false,
+    "archive_ref": "787b0255cb0c073b80f1bb6f",
+    "item_index": 6,
+    "problem_id": 67
+  },
+  {
+    "schema_version": "ds1000-memory-v2",
+    "memory_type": "episodic",
+    "created_at": "2026-06-20T08:21:17.464860+00:00",
+    "episode_id": "f4a3767d53d65123bd2c0db2",
+    "retrieval_text": "library: Pandas\ntask_family: Other\ntask_intent: Display the value counts for each column in a dataframe, formatted as a string with column headers.\nfailure_signature: Omitting required trailing newline in formatted string output, causing string mismatch.\nrepair_action: Ensure the final formatted string includes a trailing newline to match the required output structure.",
+    "library": "Pandas",
+    "task_family": "Other",
+    "task_intent": "Display the value counts for each column in a dataframe, formatted as a string with column headers.",
+    "error_type": "AssertionError",
+    "failure_signature": "Omitting required trailing newline in formatted string output, causing string mismatch.",
+    "failed_assumption": "Assumed that joining the formatted column outputs without a final newline would match the required output format.",
+    "repair_action": "Ensure the final formatted string includes a trailing newline to match the required output structure.",
+    "failure_snapshot": {
+      "type": "wrong_output",
+      "location": "value",
+      "observed": "---- id ---\nid\n34    2\n22    1\nName: count, dtype: int64\n---- temp ---\ntemp\nnull    3\nName: count, dtype: int64\n---- name ---\nname\nmark    3\nName: count, dtype: int64",
+      "expected": "---- id ---\nid\n34    2\n22    1\nName: count, dtype: int64\n---- temp ---\ntemp\nnull    3\nName: count, dtype: int64\n---- name ---\nname\nmark    3\nName: count, dtype: int64"
+    },
+    "repair_success": true,
+    "archive_ref": "f4a3767d53d65123bd2c0db2",
+    "item_index": 9,
+    "problem_id": 41,
+    "fixed_code": "result = '\\n'.join(\n    f\"---- {col} ---\\n{df[col].value_counts()}\" for col in df.columns\n) + '\\n'"
+  }
+]
